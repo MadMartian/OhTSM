@@ -4,8 +4,10 @@ Version: 0.2a
 Contributors: Jonathan Neufeld (http://www.extollit.com)
 Original Author: Martin Enge (martin.enge@gmail.com)
 Credit: Transvoxel by Eric Lengyel (http://www.terathon.com/voxels/)
-Description: 
-	This is a volumetric terrain rendering library that supports paging.  It is
+
+Description
+-----------
+This is a volumetric terrain rendering library that supports paging.  It is
 based on the old OverhangTerrainSceneManager library originally written by 
 Martin Enge.  It has been modified to use the Transvoxel algorithm for multi-
 resolution isosurface stitching.  If you are familiar with legacy 
@@ -17,14 +19,14 @@ MODULES
 =======
 Example(OhTSM)
 --------------
-	This is a sample application that demonstrates the 
+This is a sample application that demonstrates the 
 OverhangTerrainSceneManager library with simple waveform-generated terrain 
 using a straight blue material.  Click with the left mouse-button to dig and 
 right mouse-button to build.  Use the keys W.A.S.D. to move around the scene.
 
 OhTSM
 -----
-	This is the OverhangTerrainSceneManager library.  Files in the 
+This is the OverhangTerrainSceneManager library.  Files in the 
 "Core Sources" and "Core Headers" folders are internal APIs whereas the 
 "Header Files" and "Source Files" folders are meant to be public-facing.
 
