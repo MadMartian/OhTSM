@@ -1,0 +1,202 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{4DE1181F-608A-41A8-AE45-1A2D8435A2BE}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>OhTSM</RootNamespace>
+    <ProjectName>Plugin_OhTSM</ProjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <IncludePath>$(OGRE_SRC)\include;$(OGRE_SRC)\include\OGRE;$(OGRE_SRC)\include\OGRE\Paging;$(BOOST_HOME);$(IncludePath)</IncludePath>
+    <LibraryPath>$(OGRE_SRC)\lib\$(Configuration);$(OGRE_SRC)\lib\$(Configuration)\opt;$(BOOST_HOME)\stage\lib;$(LibraryPath)</LibraryPath>
+    <OutDir>$(SolutionDir)$(Configuration)\</OutDir>
+    <TargetName>$(ProjectName)_d</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <IncludePath>$(OGRE_SRC)\include;$(OGRE_SRC)\include\OGRE;$(OGRE_SRC)\include\OGRE\Paging;$(BOOST_HOME);$(IncludePath)</IncludePath>
+    <LibraryPath>$(OGRE_SRC)\lib\$(Configuration);$(OGRE_SRC)\lib\$(Configuration)\opt;$(BOOST_HOME)\stage\lib;$(LibraryPath)</LibraryPath>
+    <OutDir>$(SolutionDir)$(Configuration)\</OutDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>_OHT_LOG_TRACE;OGRE_TERRAINPLUGIN_EXPORTS;WIN32;_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <FloatingPointModel>Fast</FloatingPointModel>
+      <AdditionalIncludeDirectories>include</AdditionalIncludeDirectories>
+      <MinimalRebuild>true</MinimalRebuild>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalOptions>-Zm512 %(AdditionalOptions)</AdditionalOptions>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ImportLibrary>$(SolutionDir)$(Configuration)\$(ProjectName)_d.lib</ImportLibrary>
+      <AdditionalDependencies>OgreMain_d.lib;OgrePaging_d.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <Lib>
+      <AdditionalDependencies>OgrePaging_d.lib</AdditionalDependencies>
+    </Lib>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <Optimization>Full</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>OGRE_TERRAINPLUGIN_EXPORTS;WIN32;NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <OmitFramePointers>true</OmitFramePointers>
+      <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+      <StringPooling>true</StringPooling>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+      <FloatingPointModel>Fast</FloatingPointModel>
+      <AdditionalIncludeDirectories>include</AdditionalIncludeDirectories>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalOptions>-Zm132 %(AdditionalOptions)</AdditionalOptions>
+      <WholeProgramOptimization>true</WholeProgramOptimization>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <ImportLibrary>$(SolutionDir)$(Configuration)\$(ProjectName).lib</ImportLibrary>
+      <AdditionalDependencies>OgreMain.lib;OgrePaging.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <Lib>
+      <AdditionalDependencies>OgrePaging.lib</AdditionalDependencies>
+    </Lib>
+    <ProjectReference>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+    </ProjectReference>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="src\ColourChannelSet.cpp" />
+    <ClCompile Include="src\CubeDataRegion.cpp" />
+    <ClCompile Include="src\DebugTools.cpp" />
+    <ClCompile Include="src\DynamicRenderable.cpp" />
+    <ClCompile Include="src\GradientField.cpp" />
+    <ClCompile Include="src\HardwareIsoVertexShadow.cpp" />
+    <ClCompile Include="src\IsoSurfaceBuilder.cpp" />
+    <ClCompile Include="src\IsoSurfaceRenderable.cpp" />
+    <ClCompile Include="src\IsoSurfaceSharedTypes.cpp" />
+    <ClCompile Include="src\IsoVertexElements.cpp" />
+    <ClCompile Include="src\LODRenderable.cpp" />
+    <ClCompile Include="src\MetaBall.cpp" />
+    <ClCompile Include="src\MetaFactory.cpp" />
+    <ClCompile Include="src\MetaHeightmap.cpp" />
+    <ClCompile Include="src\MetaObject.cpp" />
+    <ClCompile Include="src\MetaWorldFragment.cpp" />
+    <ClCompile Include="src\Neighbor.cpp" />
+    <ClCompile Include="src\OverhangTerrainGroup.cpp" />
+    <ClCompile Include="src\OverhangTerrainManager.cpp" />
+    <ClCompile Include="src\OverhangTerrainManagerDll.cpp" />
+    <ClCompile Include="src\OverhangTerrainListener.cpp" />
+    <ClCompile Include="src\OverhangTerrainOptions.cpp" />
+    <ClCompile Include="src\OverhangTerrainPagedWorldSection.cpp" />
+    <ClCompile Include="src\OverhangTerrainPageInitParams.cpp" />
+    <ClCompile Include="src\OverhangTerrainPaging.cpp" />
+    <ClCompile Include="src\OverhangTerrainPlugin.cpp" />
+    <ClCompile Include="src\OverhangTerrainSceneManager.cpp" />
+    <ClCompile Include="src\PageSection.cpp" />
+    <ClCompile Include="src\pch.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">pch.h</PrecompiledHeaderFile>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">pch.h</PrecompiledHeaderFile>
+    </ClCompile>
+    <ClCompile Include="src\RLE.cpp" />
+    <ClCompile Include="src\CubeDataRegionDescriptor.cpp" />
+    <ClCompile Include="src\TerrainTile.cpp" />
+    <ClCompile Include="src\TransvoxelTables.cpp" />
+    <ClCompile Include="src\Types.cpp" />
+    <ClCompile Include="src\Util.cpp" />
+    <ClCompile Include="src\FieldAccessor.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include\ColourChannelSet.h" />
+    <ClInclude Include="include\CubeDataRegion.h" />
+    <ClInclude Include="include\DebugTools.h" />
+    <ClInclude Include="include\DynamicRenderable.h" />
+    <ClInclude Include="include\GradientField.h" />
+    <ClInclude Include="include\HardwareIsoVertexShadow.h" />
+    <ClInclude Include="include\IsoSurfaceBuilder.h" />
+    <ClInclude Include="include\IsoSurfaceRenderable.h" />
+    <ClInclude Include="include\IsoSurfaceSharedTypes.h" />
+    <ClInclude Include="include\IsoVertexElements.h" />
+    <ClInclude Include="include\LODRenderable.h" />
+    <ClInclude Include="include\MetaBall.h" />
+    <ClInclude Include="include\MetaFactory.h" />
+    <ClInclude Include="include\MetaHeightmap.h" />
+    <ClInclude Include="include\MetaObject.h" />
+    <ClInclude Include="include\MetaWorldFragment.h" />
+    <ClInclude Include="include\MOUtil.h" />
+    <ClInclude Include="include\Neighbor.h" />
+    <ClInclude Include="include\OverhangTerrainGroup.h" />
+    <ClInclude Include="include\OverhangTerrainListener.h" />
+    <ClInclude Include="include\OverhangTerrainManager.h" />
+    <ClInclude Include="include\OverhangTerrainOptions.h" />
+    <ClInclude Include="include\OverhangTerrainPage.h" />
+    <ClInclude Include="include\OverhangTerrainPagedWorldSection.h" />
+    <ClInclude Include="include\OverhangTerrainPageInitParams.h" />
+    <ClInclude Include="include\OverhangTerrainPageProvider.h" />
+    <ClInclude Include="include\OverhangTerrainPaging.h" />
+    <ClInclude Include="include\OverhangTerrainPlugin.h" />
+    <ClInclude Include="include\OverhangTerrainPrerequisites.h" />
+    <ClInclude Include="include\OverhangTerrainSceneManager.h" />
+    <ClInclude Include="include\PageSection.h" />
+    <ClInclude Include="include\pch.h" />
+    <ClInclude Include="include\RLE.h" />
+    <ClInclude Include="include\CubeDataRegionDescriptor.h" />
+    <ClInclude Include="include\TerrainTile.h" />
+    <ClInclude Include="include\TransvoxelTables.h" />
+    <ClInclude Include="include\Types.h" />
+    <ClInclude Include="include\Util.h" />
+    <ClInclude Include="include\FieldAccessor.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

@@ -1,0 +1,252 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hpp;hxx;hm;inl;inc;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Core Headers">
+      <UniqueIdentifier>{55413785-dafe-4621-9168-076c1fd2cde7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Core Sources">
+      <UniqueIdentifier>{ad5234ce-b3d8-4916-8c44-e22e04717e24}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\OverhangTerrainSceneManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\OverhangTerrainGroup.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\OverhangTerrainManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\OverhangTerrainManagerDll.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\OverhangTerrainPagedWorldSection.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\OverhangTerrainPaging.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\OverhangTerrainPlugin.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Util.cpp">
+      <Filter>Core Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\DynamicRenderable.cpp">
+      <Filter>Core Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\IsoSurfaceBuilder.cpp">
+      <Filter>Core Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\IsoSurfaceRenderable.cpp">
+      <Filter>Core Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\MetaBall.cpp">
+      <Filter>Core Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\MetaFactory.cpp">
+      <Filter>Core Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\MetaHeightmap.cpp">
+      <Filter>Core Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\MetaObject.cpp">
+      <Filter>Core Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\MetaWorldFragment.cpp">
+      <Filter>Core Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\PageSection.cpp">
+      <Filter>Core Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\TerrainTile.cpp">
+      <Filter>Core Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\pch.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\OverhangTerrainPageInitParams.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\LODRenderable.cpp">
+      <Filter>Core Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\DebugTools.cpp">
+      <Filter>Core Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Neighbor.cpp">
+      <Filter>Core Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\IsoVertexElements.cpp">
+      <Filter>Core Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\IsoSurfaceSharedTypes.cpp">
+      <Filter>Core Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\TransvoxelTables.cpp">
+      <Filter>Core Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Types.cpp">
+      <Filter>Core Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\RLE.cpp">
+      <Filter>Core Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ColourChannelSet.cpp">
+      <Filter>Core Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\CubeDataRegionDescriptor.cpp">
+      <Filter>Core Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\FieldAccessor.cpp">
+      <Filter>Core Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\HardwareIsoVertexShadow.cpp">
+      <Filter>Core Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\OverhangTerrainListener.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\GradientField.cpp">
+      <Filter>Core Sources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\OverhangTerrainOptions.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\CubeDataRegion.cpp">
+      <Filter>Core Headers</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include\Util.h">
+      <Filter>Core Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\DynamicRenderable.h">
+      <Filter>Core Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\IsoSurfaceBuilder.h">
+      <Filter>Core Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\IsoSurfaceRenderable.h">
+      <Filter>Core Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\MetaBall.h">
+      <Filter>Core Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\MetaFactory.h">
+      <Filter>Core Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\MetaHeightmap.h">
+      <Filter>Core Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\MetaObject.h">
+      <Filter>Core Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\MetaWorldFragment.h">
+      <Filter>Core Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\PageSection.h">
+      <Filter>Core Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\TerrainTile.h">
+      <Filter>Core Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\OverhangTerrainSceneManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\OverhangTerrainGroup.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\OverhangTerrainManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\OverhangTerrainOptions.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\OverhangTerrainPagedWorldSection.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\OverhangTerrainPaging.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\OverhangTerrainPlugin.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\OverhangTerrainPrerequisites.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\pch.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\OverhangTerrainPageProvider.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\OverhangTerrainPageInitParams.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\OverhangTerrainListener.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="include\LODRenderable.h">
+      <Filter>Core Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\DebugTools.h">
+      <Filter>Core Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Neighbor.h">
+      <Filter>Core Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\TransvoxelTables.h">
+      <Filter>Core Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\IsoVertexElements.h">
+      <Filter>Core Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\IsoSurfaceSharedTypes.h">
+      <Filter>Core Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Types.h">
+      <Filter>Core Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\MOUtil.h">
+      <Filter>Core Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\RLE.h">
+      <Filter>Core Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ColourChannelSet.h">
+      <Filter>Core Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\CubeDataRegionDescriptor.h">
+      <Filter>Core Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\CubeDataRegion.h">
+      <Filter>Core Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\FieldAccessor.h">
+      <Filter>Core Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\HardwareIsoVertexShadow.h">
+      <Filter>Core Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\GradientField.h">
+      <Filter>Core Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\OverhangTerrainPage.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>
