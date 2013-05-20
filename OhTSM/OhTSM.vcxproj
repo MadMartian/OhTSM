@@ -195,6 +195,10 @@
     <ClInclude Include="include\Types.h" />
     <ClInclude Include="include\Util.h" />
     <ClInclude Include="include\FieldAccessor.h" />
+    <ClInclude Include="resource.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="Plugin_OhTSM.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
