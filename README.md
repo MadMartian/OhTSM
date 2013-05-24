@@ -91,8 +91,6 @@ KNOWN ISSUES
 	waiting on task completion
 -	Texture-coordinates are not properly implemented, most obvious solution is 
 	to employ (expensive) triplanar texturing
--	Meta objects are not removed from memory after a page is destroyed / 
-	unloaded
 -	Ray queries sometimes fail, unclear why this is, behavior is inconsistent
 -	Material-per-tile not tested, might even be non-functional
 -	Loading or changing main top-level configuration options during runtime has

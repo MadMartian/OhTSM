@@ -106,8 +106,13 @@ namespace Ogre
 		// TODO: Fails when calling removeAllTerrains(), compensate, assertion is invalid
 		OgreAssert(_pScNode == NULL, "Scene node must be detached first");
 
+		typedef std::list< MetaObject * > MOList;
+		MOList poplist;
+
 		for (MetaObjectIterator i = iterateMetaObjects(); i; ++i)
-			delete &(*i);
+			poplist.push_back(&(*i));
+		for (MOList::iterator i = poplist.begin(); i != poplist.end(); ++i)
+			delete *i;
 
 		Terrain2D::iterator i, iend;
 		iend = _vTiles.end();
