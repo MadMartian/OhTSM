@@ -1360,9 +1360,9 @@ namespace Ogre
 		ci0 = _trrefiner.getGridIndex0();
 		ci1 = _trrefiner.getGridIndex1();
 		OgreAssert(
-			((ci00 == _pMainVtxElems->cellindices[ivi].corner0) && ((ei == 7 || ei < 3)) && (ci01 != _pMainVtxElems->cellindices[ivi].corner1)) ||
-			((ci01 == _pMainVtxElems->cellindices[ivi].corner1) && ((ei == 7 || ei < 3)) && (ci00 != _pMainVtxElems->cellindices[ivi].corner0)) ||
-			((ci01 == _pMainVtxElems->cellindices[ivi].corner1) && (ci00 == _pMainVtxElems->cellindices[ivi].corner0)), 
+			((ci0 == _pMainVtxElems->cellindices[ivi].corner0) && ((ei == 7 || ei < 3)) && (ci1 != _pMainVtxElems->cellindices[ivi].corner1)) ||
+			((ci1 == _pMainVtxElems->cellindices[ivi].corner1) && ((ei == 7 || ei < 3)) && (ci0 != _pMainVtxElems->cellindices[ivi].corner0)) ||
+			((ci1 == _pMainVtxElems->cellindices[ivi].corner1) && (ci0 == _pMainVtxElems->cellindices[ivi].corner0)), 
 			"Corner indicies mismatch check failed"
 		);
 
