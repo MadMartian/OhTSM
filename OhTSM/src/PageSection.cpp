@@ -106,6 +106,9 @@ namespace Ogre
 		// TODO: Fails when calling removeAllTerrains(), compensate, assertion is invalid
 		OgreAssert(_pScNode == NULL, "Scene node must be detached first");
 
+		for (MetaObjectIterator i = iterateMetaObjects(); i; ++i)
+			delete &(*i);
+
 		Terrain2D::iterator i, iend;
 		iend = _vTiles.end();
 		for (i = _vTiles.begin(); i != iend; ++i)
@@ -118,6 +121,7 @@ namespace Ogre
 				*j = NULL;
 			}
 		}
+
 
 		// TODO: Deconstruct multi-referenced meta objects
 
