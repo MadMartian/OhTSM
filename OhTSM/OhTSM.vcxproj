@@ -39,14 +39,14 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <IncludePath>$(OGRE_SRC)\include;$(OGRE_SRC)\include\OGRE;$(OGRE_SRC)\include\OGRE\Paging;$(BOOST_HOME);$(IncludePath)</IncludePath>
-    <LibraryPath>$(OGRE_SRC)\lib\$(Configuration);$(OGRE_SRC)\lib\$(Configuration)\opt;$(BOOST_HOME)\stage\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(OGRE_SRC)\include;$(OGRE_SRC)\include\OGRE;$(OGRE_SRC)\include\OGRE\Paging;$(BOOST_ROOT);$(IncludePath)</IncludePath>
+    <LibraryPath>$(OGRE_SRC)\lib\$(Configuration);$(OGRE_SRC)\lib\$(Configuration)\opt;$(BOOST_ROOT)\stage\lib;$(LibraryPath)</LibraryPath>
     <OutDir>$(SolutionDir)$(Configuration)\</OutDir>
     <TargetName>$(ProjectName)_d</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <IncludePath>$(OGRE_SRC)\include;$(OGRE_SRC)\include\OGRE;$(OGRE_SRC)\include\OGRE\Paging;$(BOOST_HOME);$(IncludePath)</IncludePath>
-    <LibraryPath>$(OGRE_SRC)\lib\$(Configuration);$(OGRE_SRC)\lib\$(Configuration)\opt;$(BOOST_HOME)\stage\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>$(OGRE_SRC)\include;$(OGRE_SRC)\include\OGRE;$(OGRE_SRC)\include\OGRE\Paging;$(BOOST_ROOT);$(IncludePath)</IncludePath>
+    <LibraryPath>$(OGRE_SRC)\lib\$(Configuration);$(OGRE_SRC)\lib\$(Configuration)\opt;$(BOOST_ROOT)\stage\lib;$(LibraryPath)</LibraryPath>
     <OutDir>$(SolutionDir)$(Configuration)\</OutDir>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
