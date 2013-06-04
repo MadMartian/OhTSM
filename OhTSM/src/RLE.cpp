@@ -136,7 +136,7 @@ namespace Ogre
 			i = 0;
 			_zsize = nDecompSize / 10;
 			_buffer = reinterpret_cast< unsigned char * > (realloc(_buffer, _zsize));
-			while (c <= nDecompSize)
+			while (c < nDecompSize)
 			{
 				const size_t
 					c1 = c+1, 

@@ -1359,12 +1359,6 @@ namespace Ogre
 		_pMainVtxElems->computeTransitionIndexProperties(tc.side, csc.x, csc.y, ei, tsx, tsy, rside, ivi, rside);
 		ci0 = _trrefiner.getGridIndex0();
 		ci1 = _trrefiner.getGridIndex1();
-		OgreAssert(
-			((ci0 == _pMainVtxElems->cellindices[ivi].corner0) && ((ei == 7 || ei < 3)) && (ci1 != _pMainVtxElems->cellindices[ivi].corner1)) ||
-			((ci1 == _pMainVtxElems->cellindices[ivi].corner1) && ((ei == 7 || ei < 3)) && (ci0 != _pMainVtxElems->cellindices[ivi].corner0)) ||
-			((ci1 == _pMainVtxElems->cellindices[ivi].corner1) && (ci0 == _pMainVtxElems->cellindices[ivi].corner0)), 
-			"Corner indicies mismatch check failed"
-		);
 
 		OHT_ISB_DBGTRACE("Refining Transition: VRECaCC=" << vrecacc << ", TC=" << tc << ": ivi=" << ivi << ", resolved EI=" << (int)ei << ", coords pair=<" << ci0 << "x" << ci1 << ">");
 	}
