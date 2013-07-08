@@ -32,9 +32,12 @@ http://www.gnu.org/copyleft/lesser.txt.
 #include <OgreVector3.h>
 #include <OgreAxisAlignedBox.h>
 
+#include <list>
+
 #include "OverhangTerrainPrerequisites.h"
 #include "Util.h"
 #include "Types.h"
+#include "ChannelIndex.h"
 #include "OverhangTerrainOptions.h"
 #include "IsoSurfaceBuilder.h"
 #include "CubeDataRegion.h"
@@ -72,6 +75,53 @@ namespace Ogre
 		*/
 		OverhangTerrainManager(const OverhangTerrainOptions & opts, OverhangTerrainSceneManager * tsm);
 
+		/** Parameters used to influence a ray query */
+		class _OverhangTerrainPluginExport RayQueryParams
+		{
+		public:
+			/// Distance limit in world units to terminate ray searching
+			Real limit;
+
+			/** Describes channels factored into the ray query */
+			class _OverhangTerrainPluginExport Channels
+			{
+			public:
+				/// The list of channels (identifiers) factored-into the query
+				Channel::Ident * const array;
+				/// Size of the channel identifier array above
+				const size_t size;
+
+				Channels();
+				/**
+				@param channels A collection of channels (identifiers) used to factor-into the query, other channels will be ignored in the query
+				*/
+				Channels(const std::list< Channel::Ident > & channels);
+				~Channels();
+			} channels;
+
+		private:
+			/**
+			@param nLimit Distance limit in world units to terminate ray searching
+			@param channels A collection of channels (identifiers) used to factor-into the query, other channels will be ignored in the query
+			*/
+			RayQueryParams(const Real nLimit, const Channels & channels);
+			/**
+			@param nLimit Distance limit in world units to terminate ray searching
+			*/
+			RayQueryParams(const Real nLimit);
+
+		public:
+			/**
+			@param nLimit Distance limit in world units to terminate ray searching
+			*/
+			static RayQueryParams from (const Real nLimit);
+			/**
+			@param nLimit Distance limit in world units to terminate ray searching
+			@param channel An inline ellipsis-list of channels (identifiers) used to factor-into the query, other channels will be ignored in the query
+			*/
+			static RayQueryParams from (const Real nLimit, Channel::Ident channel, ...);
+		};
+
 		/** Result from a terrain ray intersection with the terrain group. */
 		struct _OverhangTerrainPluginExport RayResult	// TODO: Extract to top-level and reduce inclusion tree
 		{
@@ -100,11 +150,11 @@ namespace Ogre
 		/** Test for intersection of a given ray with any terrain in the group. If the ray hits a terrain, the point of 
 			intersection and terrain instance is returned.
 		 @param ray The ray to test for intersection
-		 @param distanceLimit The distance from the ray origin at which we will stop looking or zero for no limit
+		 @param params Parameters influencing the ray query including the distance from the ray origin at which we will stop looking or zero for no limit
 		 @return A result structure which contains whether the ray hit a terrain and if so, where. */
-		virtual RayResult rayIntersects(Ray ray, Real distanceLimit = 0) const = 0;
+		virtual RayResult rayIntersects(Ray ray, const OverhangTerrainManager::RayQueryParams & params) const = 0;
 		/// Sets the material used on all terrain
-		virtual void setMaterial (const MaterialPtr & m) = 0;
+		virtual void setMaterial (const Channel::Ident channel, const MaterialPtr & m) = 0;
 
 		/// @returns The scene manager used
 		inline OverhangTerrainSceneManager * getSceneManager() const { return _pScnMgr; }

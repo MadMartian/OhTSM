@@ -16,7 +16,7 @@ public:
 	virtual bool loadPage (const int16 x, const int16 y, PageInitParams * pInitParams, IOverhangTerrainPage * pPage);
 
 	// Called in background worker thread when a request has been made to flush a page to disk, usually just before it is to be unloaded
-	virtual bool savePage (const Real * pfHM, const IOverhangTerrainPage * pPage, const int16 x, const int16 y, const size_t nPageAxis, const unsigned long nTotalPageSize);
+	virtual bool savePage (const IOverhangTerrainPage * pPage, const int16 x, const int16 y, const size_t nPageAxis, const unsigned long nTotalPageSize);
 
 	// Called in main thread when a page is about to be unloaded
 	virtual void unloadPage (const int16 x, const int16 y);

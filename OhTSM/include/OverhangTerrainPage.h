@@ -53,10 +53,10 @@ namespace Ogre
 		/** Determines if the page is inconsistent with its state on disk */
 		virtual bool isDirty() const = 0;
 
-		/// Adds a listener to the page to receive events fired by this page
-		virtual void addListener (IOverhangTerrainListener * pListener) = 0;
-		/// Removes a listener from the page previously added
-		virtual void removeListener (IOverhangTerrainListener * pListener) = 0;
+		/// Adds a listener to the page to receive events fired by this page associated with the specified channel
+		virtual void addListener (const Channel::Ident channel, IOverhangTerrainListener * pListener) = 0;
+		/// Removes a listener from the page previously added associated with the specified channel
+		virtual void removeListener (const Channel::Ident channel, IOverhangTerrainListener * pListener) = 0;
 
 		/// @returns The center of the page according to its parent node in the scene
 		virtual Vector3 getPosition() const = 0;

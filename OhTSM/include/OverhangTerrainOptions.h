@@ -31,6 +31,8 @@ http://www.gnu.org/copyleft/lesser.txt.
 
 #include "OverhangTerrainPrerequisites.h"
 
+#include "ChannelIndex.h"
+
 #include <OgreStreamSerialiser.h>
 #include <OgreMaterial.h>
 
@@ -49,10 +51,61 @@ namespace Ogre
 		NumTerrainAlign = 3
 	};
 
-	/** Main top-leve base configuration for OhTSM */
+	/// Flags describing what data is stored in the data grid.
+	enum OverhangTerrainVoxelRegionFlags
+	{
+		/// The voxel region stores gradient vectors.
+		VRF_Gradient = 1 << 0,
+		/// The voxel region stores colour values.
+		VRF_Colours = 1 << 1,
+		/// The voxel region stores texture coordinates.
+		VRF_TexCoords = 1 << 2
+	};
+
+	/// Type of normals requested during a IsoSurfaceBuilder operation
+	enum NormalsType
+	{
+		/// Don't generate normals
+		NT_None,
+		/// Normals are calculated as a weighted average of face normals.
+		NT_WeightedAverage,
+		/// Normals are calculated as an average of face normals.
+		NT_Average,
+		/// Normals are calculated by interpolating the gradient in the data grid.
+		NT_Gradient
+	};
+
+	/** Main top-level and base configuration for OhTSM */
     class _OverhangTerrainPluginExport OverhangTerrainOptions
     {
     public:
+		/** Channel-specific OhTSM configuration */
+		class _OverhangTerrainPluginExport ChannelOptions
+		{
+		public:
+			MaterialPtr material;
+			bool materialPerTile;
+
+			/// Type of normals that IsoSurfaceBuilder generates
+			NormalsType normals;
+			/// Whether or not to invert generated normals
+			bool flipNormals;
+			/// The maximum terrain geo-mipmap level
+			size_t maxGeoMipMapLevel;
+			/// The maximum pixel error allowed before switching resolutions to compensate
+			Real maxPixelError;
+			/// Ratio of space that a transition cell takes-up of a normal regular grid cell
+			Real transitionCellWidthRatio;
+
+			/// Flags describing what channels of a CubeDataRegion are relevant
+			OverhangTerrainVoxelRegionFlags voxelRegionFlags;
+
+			ChannelOptions();
+		};
+
+		/// The set of channel-specific configuration options
+		Channel::Index< ChannelOptions > channels;
+
         OverhangTerrainOptions();
 
 		/// The primary camera, used for error metric calculation and page choice
@@ -64,18 +117,10 @@ namespace Ogre
         size_t pageSize;
         /// The size of one edge of a terrain tile, in vertices
         size_t tileSize; 
-        /// The maximum terrain geo-mipmap level
-        size_t maxGeoMipMapLevel;
         /// The scale factor to apply to the terrain (each vertex is 1 unscaled unit
         /// away from the next, and height is from 0 to 1)
         /// NOTE: Terrain in the world is aligned along the x/z plane
         Real cellScale, heightScale;
-        /// The maximum pixel error allowed before switching resolutions to compensate
-        Real maxPixelError;
-        /// Whether vertex colours are enabled for isosurface renderables and in the voxel grids
-        bool coloured;
-        /// Pointer to the material to use to render all isosurface renderables
-        MaterialPtr terrainMaterial;
 		/// Whether each individual terrain tile gets a separate material
 		bool materialPerTile;
 		/// Whether to automatically save dirty pages upon unloading

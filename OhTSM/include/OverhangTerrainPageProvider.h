@@ -43,19 +43,39 @@ namespace Ogre
 	class IOverhangTerrainPageProvider
 	{
 	public:
-		// Called in background worker thread when a request has been made to load a page
+		/** Called in background worker thread when a request has been made to load a page
+		@remarks Can be used to load data into the page, implementations should first populate the initialization parameters, call the overloaded "<<" operator for both streams and initialization parameters followed by the "conjoin" method.
+		@param x Terrain slot x-offset
+		@param y Terrain slot y-offset
+		@param pInitParams The initialization parameters that must be initialized
+		@param pPage The page that must be initialized / populated
+		@returns True if the page load operation was handled by this implementation, false if another implementation should receive and process this event */
 		virtual bool loadPage (const int16 x, const int16 y, PageInitParams * pInitParams, IOverhangTerrainPage * pPage) = 0;
 
-		// Called in background worker thread when a request has been made to flush a page to disk, usually just before it is to be unloaded
-		virtual bool savePage (const Real * pfHM, const IOverhangTerrainPage * pPage, const int16 x, const int16 y, const size_t nPageAxis, const unsigned long nTotalPageSize) = 0;
+		/** Called in background worker thread when a request has been made to flush a page to disk, usually just before it is to be unloaded
+		@param pPage The page being saved
+		@param x Terrain slot x-offset
+		@param y Terrain slot y-offset
+		@param nPageAxis The size of one edge of a terrain page, in vertices
+		@param nTotalPageSize The area of the terrain page, in vertices
+		@returns True if the page save operation was handled by this implementation, false if another implementation should receive and process this event */
+		virtual bool savePage (const IOverhangTerrainPage * pPage, const int16 x, const int16 y, const size_t nPageAxis, const unsigned long nTotalPageSize) = 0;
 
-		// Called in main thread when a page is about to be unloaded
+		/** Called in main thread when a page is about to be unloaded
+		@param x Terrain slot x-offset
+		@param y Terrain slot y-offset */
 		virtual void unloadPage (const int16 x, const int16 y) = 0;
 
-		// Called last of all in main thread after page has been fully initialised
+		/** Called last of all in main thread after page has been fully initialised
+		@param x Terrain slot x-offset
+		@param y Terrain slot y-offset
+		@param pPage The page being saved */
 		virtual void preparePage (const int16 x, const int16 y, IOverhangTerrainPage * pPage) = 0;
 
-		// Called initially in main thread to detach and prepare the page for deletion
+		/** Called initially in main thread to detach and prepare the page for deletion
+		@param x Terrain slot x-offset
+		@param y Terrain slot y-offset
+		@param pPage The page being saved */
 		virtual void detachPage (const int16 x, const int16 y, IOverhangTerrainPage * pPage) = 0;
 	};
 }

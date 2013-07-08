@@ -43,7 +43,7 @@ http://www.gnu.org/copyleft/lesser.txt.
 
 namespace Ogre
 {
-	TerrainTile::TerrainTile(const size_t p, const size_t q, PagePrivateNonthreaded * const page, const OverhangTerrainOptions & opts)
+	TerrainTile::TerrainTile(const size_t p, const size_t q, const Channel::Descriptor & descchann, PagePrivateNonthreaded * const page, const OverhangTerrainOptions & opts)
 	: p(p), q(q), 
 	borders(
 		getTouch2DSide(
@@ -51,37 +51,29 @@ namespace Ogre
 			getTouchStatus(q, 0, opts.getTilesPerPage() - 1)
 		)
 	),
-	_psetDirtyMF(NULL), _options(opts), _pPage(page), _pMetaHeightmap(NULL), _bInit(false), _bParameterized(false)
+	_index2mapMF(descchann), _dirtyMF(descchann), _properties(descchann),
+	_options(opts), _pPage(page), _bInit(false), _bParameterized(false)
 	{
-		_pMetaHeightmap = new MetaHeightMap(this);
-
 		for ( int i = 0; i < CountVonNeumannNeighbors; i++ )
 			_vpInternalNeighbors[ i ] = NULL;
-
-		for (int i = 0; i < NumOCS; ++i)
-			_vpBBox[i] = NULL;
 	}
 
 	TerrainTile::~TerrainTile()
 	{
 		oht_assert_threadmodel(ThrMdl_Single);
 
-		OHT_DBGTRACE("Delete MWF: " << _mapMF.size());
-
-		for(MetaFragMap::iterator it = _mapMF.begin(); it != _mapMF.end(); ++it)
+		for (Channel::Index< MetaFragMap >::iterator j = _index2mapMF.begin(); j != _index2mapMF.end(); ++j)
 		{
+			for(MetaFragMap::iterator it = j->value->begin(); it != j->value->end(); ++it)
 			{
-				MetaFragment::Interfaces::Unique fragment = it->second->acquireInterface();
-				_pPage->fireOnDestroyMetaRegion(&fragment);
+				{
+					MetaFragment::Interfaces::Unique fragment = it->second->acquireInterface();
+					_pPage->fireOnDestroyMetaRegion(j->channel, &fragment);
+				}
+				delete it->second;
 			}
-			delete it->second;
 		}
 
-		delete _psetDirtyMF;
-		delete _pMetaHeightmap;
-
-		for (int i = 0; i < NumOCS; ++i)
-			delete _vpBBox[i];
 	}
 
 	void TerrainTile::initNeighbor(const VonNeumannNeighbor n, TerrainTile * t )
@@ -91,12 +83,19 @@ namespace Ogre
 		_vpInternalNeighbors[n] = t;
 	}
 
-	void TerrainTile::setRenderQueueGroup(uint8 qid)
+	void TerrainTile::setRenderQueueGroup( const Channel::Ident channel, uint8 qid )
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
-		for(MetaFragMap::iterator i = _mapMF.begin(); i != _mapMF.end(); ++i)
+
+		_properties[channel].renderq = qid;
+		Channel::Index< MetaFragMap >::iterator j = _index2mapMF.find(channel);
+
+		if (j != _index2mapMF.end())
 		{
-			i->second->acquireBasicInterface().surface->setRenderQueueGroup(qid);
+			for(MetaFragMap::iterator i = j->value->begin(); i != j->value->end(); ++i)
+			{
+				i->second->acquireBasicInterface().surface->setRenderQueueGroup(qid);
+			}
 		}
 	}
 
@@ -104,65 +103,22 @@ namespace Ogre
 	{
 		oht_assert_threadmodel(ThrMdl_Background);
 
-		//calculate min and max heights;
-		Real 
-			min = std::numeric_limits< Real >::max(),
-			max = -min;
-
 		const int 
 			endx = params.vx0 + _options.tileSize,
 			endz = params.vy0 + _options.tileSize;
 
 		_x0 = params.vx0;
 		_y0 = params.vy0;
-			
-		for ( int j = params.vy0; j < endz; j++ )
-		{
-			for ( int i = params.vx0; i < endx; i++ )
-			{
-				Real height = params.heightmap[j * _options.pageSize + i];
-				height = height * _options.heightScale; // mOptions->scale height 
-
-				if ( height < min )
-					min = ( Real ) height;
-
-				if ( height > max )
-					max = ( Real ) height;
-			}
-		}
 
 		const Vector3 vecOffsetHalf = Vector3(1, 0, 1) * (_options.getPageWorldSize() / 2);
-		_vHMBBox[OCS_World].setExtents(
-			( Real ) params.vx0 * _options.cellScale - vecOffsetHalf.x, 
-			min, 
-			( Real ) params.vy0 * _options.cellScale - vecOffsetHalf.z,
-			( Real ) ( endx - 1 ) * _options.cellScale - vecOffsetHalf.x, 
-			max,
-			( Real ) ( endz - 1 ) * _options.cellScale - vecOffsetHalf.z
-		);
-		_vHMBBox[OCS_Vertex] = 
-		_vHMBBox[OCS_DataGrid] = 
-		_vHMBBox[OCS_PagingStrategy] = 
-		_vHMBBox[OCS_Terrain] = _vHMBBox[OCS_World];
-		OverhangTerrainManager::transformSpace(OCS_World, _options.alignment, OCS_Terrain, _vHMBBox[OCS_Terrain]);
-		OverhangTerrainManager::transformSpace(OCS_World, _options.alignment, OCS_PagingStrategy, _vHMBBox[OCS_PagingStrategy]);
-		OverhangTerrainManager::transformSpace(OCS_World, _options.alignment, OCS_Vertex, _vHMBBox[OCS_Vertex], _options.cellScale);
-		OverhangTerrainManager::transformSpace(OCS_World, _options.alignment, OCS_DataGrid, _vHMBBox[OCS_DataGrid], _options.cellScale);
-	
-		_vCenterPos[OCS_World] = Vector3( 
-			( params.vx0 * _options.cellScale + (endx - 1) * _options.cellScale ) / 2 - vecOffsetHalf.x,
-			0,
-			( params.vy0 * _options.cellScale + (endz - 1) * _options.cellScale ) / 2 - vecOffsetHalf.z 
-		);
-		_vCenterPos[OCS_PagingStrategy] = 
-			_vCenterPos[OCS_Terrain] = 
-			_vCenterPos[OCS_Vertex] = 
-			_vCenterPos[OCS_DataGrid] = 
-			_vCenterPos[OCS_World];
-		OverhangTerrainManager::transformSpace(OCS_World, _options.alignment, OCS_Vertex, _vCenterPos[OCS_Vertex], _options.cellScale);
-		OverhangTerrainManager::transformSpace(OCS_World, _options.alignment, OCS_DataGrid, _vCenterPos[OCS_DataGrid], _options.cellScale);
-		OverhangTerrainManager::transformSpace(OCS_World, _options.alignment, OCS_PagingStrategy, _vCenterPos[OCS_PagingStrategy]);
-		OverhangTerrainManager::transformSpace(OCS_World, _options.alignment, OCS_Terrain, _vCenterPos[OCS_Terrain]);
+		_bbox.minimum.x = ( Real ) params.vx0 * _options.cellScale - vecOffsetHalf.x;
+		_bbox.minimum.y = ( Real ) params.vy0 * _options.cellScale - vecOffsetHalf.z;
+
+		_bbox.maximum.x = ( Real ) ( endx - 1 ) * _options.cellScale - vecOffsetHalf.x;
+		_bbox.maximum.y = ( Real ) ( endz - 1 ) * _options.cellScale - vecOffsetHalf.z;
+
+		_pos.x = ( params.vx0 * _options.cellScale + (endx - 1) * _options.cellScale ) / 2 - vecOffsetHalf.x;
+		_pos.y = ( params.vy0 * _options.cellScale + (endz - 1) * _options.cellScale ) / 2 - vecOffsetHalf.z;
 
 		_bParameterized = true;
 	}
@@ -171,31 +127,47 @@ namespace Ogre
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
 
-		for (MetaFragMap::iterator i = _mapMF.begin(); i != _mapMF.end(); ++i)
+		for (Channel::Index< MetaFragMap >::iterator j = _index2mapMF.begin(); j != _index2mapMF.end(); ++j)
 		{
-			MetaFragment::Container * pMWF = i->second;
-			const MetaFragment::Container * pConstMWF = i->second;
-			initialiseMWF(pParentSceneNode, pConstMWF->acquireBasicInterface(), pMWF->acquireBuilderInterface());
+			for (MetaFragMap::iterator i = j->value->begin(); i != j->value->end(); ++i)
+			{
+				MetaFragment::Container * pMWF = i->second;
+				const MetaFragment::Container * pConstMWF = i->second;
+				initialiseMWF(j->channel, pParentSceneNode, pConstMWF->acquireBasicInterface(), pMWF->acquireBuilderInterface());
+			}
 		}
 
 		_bInit = true;
 	}
 
-	void TerrainTile::voxelise()
+	void TerrainTile::voxeliseTerrain( MetaHeightMap * const pMetaHeightMap )
 	{
 		oht_assert_threadmodel(ThrMdl_Background);
 
-		_pMetaHeightmap->updatePosition();
+		Real min, max;
+		pMetaHeightMap->span(_x0, _y0, _x0 + _options.tileSize, _y0 + _options.tileSize, min, max);
 
 		const YLevel
-			ylmb0 = computeYLevel(_vHMBBox[OCS_Terrain].getMinimum().z-1),
-			ylmbN = computeYLevel(_vHMBBox[OCS_Terrain].getMaximum().z+1);
+			ylmb0 = computeYLevel(min-1),
+			ylmbN = computeYLevel(max+1);
 
 		for (YLevel yli = ylmb0; yli <= ylmbN; ++yli)
-			acquireMetaWorldFragment(yli);
+		{
+			MetaFragment::Container * pFrag = acquireMetaWorldFragment(TERRAIN_ENTITY_CHANNEL, yli);
+			pFrag->acquire< MetaFragment::Interfaces::Unique > ()
+				.addMetaObject(pMetaHeightMap);
+		}
 	}
 
-	void TerrainTile::initialiseMWF( SceneNode * pParentSceneNode, MetaFragment::Interfaces::const_Basic & basic, MetaFragment::Interfaces::Builder & builder )
+	void TerrainTile::unlinkeHeightMap( const MetaHeightMap * const pMetaHeightMap )
+	{
+		MetaFragMap & map = _index2mapMF[TERRAIN_ENTITY_CHANNEL];
+		for (MetaFragMap::iterator i = map.begin(); i != _index2mapMF[TERRAIN_ENTITY_CHANNEL].end(); ++i)
+			i->second->acquire< MetaFragment::Interfaces::Unique > ()
+			.removeMetaObject(pMetaHeightMap);
+	}
+
+	void TerrainTile::initialiseMWF( const Channel::Ident channel, SceneNode * pParentSceneNode, MetaFragment::Interfaces::const_Basic & basic, MetaFragment::Interfaces::Builder & builder )
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
 
@@ -204,83 +176,42 @@ namespace Ogre
 			ssISRName;
 
 		ssSceneNodeName << "MWF[" << p << ',' << q << ';' << basic.ylevel << "] (" << _pPage->getPageX() << 'x' << _pPage->getPageY() << ')';
-		Vector3 ptChildPos = getYLevelPosition(basic.ylevel, OCS_Terrain) + _pPage->getManager().options.getTileWorldSize() / 2.0f;
-		_pPage->getManager().transformSpace(OCS_Terrain, OCS_World, ptChildPos);
+		AxisAlignedBox bboxChild = getYLevelBounds(basic.ylevel, OCS_Terrain);
+		_pPage->getManager().transformSpace(OCS_Terrain, OCS_World, bboxChild);
 
-		OHT_DBGTRACE("Create Scene Node at " << ptChildPos << " relative to " << pParentSceneNode->getPosition());
-		SceneNode * pScNode = pParentSceneNode->createChildSceneNode(ssSceneNodeName.str(), ptChildPos);
+		OHT_DBGTRACE("Create Scene Node at " << bboxChild.getCenter() << " relative to " << pParentSceneNode->getPosition());
+		SceneNode * pScNode = pParentSceneNode->createChildSceneNode(ssSceneNodeName.str(), bboxChild.getCenter());
 
 		ssISRName << "ISR[" << p << ',' << q << ';' << basic.ylevel << "] (" << _pPage->getPageX() << 'x' << _pPage->getPageY() << ')';
 
 		builder.initialise(_options.primaryCamera, pScNode, ssISRName.str());
-		builder.setMaterial(_pMaterial);
-		_pPage->fireOnInitMetaRegion(&basic, &builder);
+
+		Channel::Index< ChannelProperties >::const_iterator p = _properties.find(channel);
+		if (p != _properties.end())
+		{
+			builder.setMaterial(p->value->material);
+			builder.surface->setRenderQueueGroup(p->value->renderq);
+		}
+
+		_pPage->fireOnInitMetaRegion(channel, &basic, &builder);
 	}
 
-	void TerrainTile::setMaterial(const MaterialPtr& m )
+	void TerrainTile::setMaterial( const Channel::Ident channel, const MaterialPtr& m )
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
-		for(MetaFragMap::iterator i = _mapMF.begin(); i != _mapMF.end(); ++i)
+
+		_properties[channel].material = m;
+
+		Channel::Index< MetaFragMap >::iterator j = _index2mapMF.find(channel);
+
+		if (j != _index2mapMF.end())
 		{
-			MetaFragment::Interfaces::Builder fragment = i->second->acquireBuilderInterface();
-			fragment.setMaterial(m);
-		}
-		_pMaterial = m;
-	}
-
-	const AxisAlignedBox& TerrainTile::getHeightMapBBox( const OverhangCoordinateSpace encsTo /*= OCS_World*/ ) const
-	{
-		return _vHMBBox[encsTo];
-	}
-
-	const AxisAlignedBox& TerrainTile::getBBox(const OverhangCoordinateSpace encsTo /*= OCS_World*/) const
-	{
-		oht_assert_threadmodel(ThrMdl_Single);
-
-		const OverhangTerrainManager & manager = _pPage->getManager();
-
-		if (_vpBBox[encsTo] == NULL)
-		{
-			OgreAssert(isParameterized(), "Cannot call getBBox before TT has been parameterized");
-
-			if (_vpBBox[OCS_Terrain] == NULL)
+			for(MetaFragMap::iterator i = j->value->begin(); i != j->value->end(); ++i)
 			{
-				YLevel	nYLevel0 = YLevel::MAX, 
-						nYLevel1 = YLevel::MIN;
-
-				for (MetaFragMap::const_iterator i = _mapMF.begin(); i != _mapMF.end(); ++i)
-				{
-					if (i->first < nYLevel0)
-						nYLevel0 = i->first;
-					if (i->first > nYLevel1)
-						nYLevel1 = i->first;
-				}
-
-				const Real 
-					z1 = manager.toSpace(nYLevel1 + 1, OCS_Terrain).z,
-					z0 = manager.toSpace(nYLevel0, OCS_Terrain).z;
-
-				// TODO: Is this the most efficient / best way of doing this?
-				AxisAlignedBox * pbbox =
-					_vpBBox[OCS_Terrain] = 
-					new AxisAlignedBox(_vHMBBox[OCS_Terrain]);
-
-				if (z1 > pbbox->getMaximum().z)
-					pbbox->setMaximumZ(z1);
-				if (z0 < pbbox->getMinimum().z)
-					pbbox->setMinimumZ(z0);
+				MetaFragment::Interfaces::Builder fragment = i->second->acquireBuilderInterface();
+				fragment.setMaterial(m);
 			}
-
-			if (encsTo != OCS_Terrain)
-				_vpBBox[encsTo] = new AxisAlignedBox(_pPage->getManager().toSpace(OCS_Terrain, encsTo, *_vpBBox[OCS_Terrain]));
 		}
-		return *_vpBBox[encsTo];
-	}
-
-	const Vector3& TerrainTile::getCenter( const OverhangCoordinateSpace encsTo /*= OCS_World*/ ) const
-	{
-		oht_assert_threadmodel(ThrMdl_Single);
-		return _vCenterPos[encsTo];
 	}
 
 	const TerrainTile* TerrainTile::raySelectNeighbour(const Ray& ray, Real distanceLimit /* = 0 */) const
@@ -302,7 +233,8 @@ namespace Ogre
 
 		// Reposition at tile origin, height doesn't matter
 		// TODO: Check
-		tPos -= getPosition(OCS_Terrain);
+		tPos.x -= _pos.x;
+		tPos.y -= _pos.y;
 
 		// Translate and convert to terrain space
 		//tPos.x -= nWorldSize * 0.5;
@@ -368,30 +300,22 @@ namespace Ogre
 		return 0;
 	}
 
-	bool TerrainTile::rayIntersects(OverhangTerrainManager::RayResult & result, const Ray& rayPageRelTerrainSpace, bool bCascade /* = false */, Real nLimit /* = 0 */) const
+	bool TerrainTile::rayIntersects( OverhangTerrainManager::RayResult & result, const Ray& rayPageRelTerrainSpace, const OverhangTerrainManager::RayQueryParams & params, bool bCascade /*= false*/ ) const
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
 		std::pair<bool, Real> intersection;
 
 		result.hit = false;
 		
-		intersection = rayPageRelTerrainSpace.intersects(getBBox(OCS_Terrain));
-		OHT_DBGTRACE(
-			"\t\tTile:" 
-			<< AxisAlignedBox(
-				getBBox().getMinimum() + _pPage->getPublic()->getPosition(), 
-				getBBox().getMaximum() + _pPage->getPublic()->getPosition()
-			) 
-			<< " intersects: " 
-			<< (intersection.first ? "true" : "false")
-		);
+		intersection = rayPageRelTerrainSpace % _bbox;
+
 		if (!intersection.first)
 		{
 			if (bCascade)
 			{
-				const TerrainTile* pNeighbor = raySelectNeighbour(rayPageRelTerrainSpace, nLimit);
+				const TerrainTile* pNeighbor = raySelectNeighbour(rayPageRelTerrainSpace, params.limit);
 				if (pNeighbor != NULL)
-					return pNeighbor->rayIntersects(result, rayPageRelTerrainSpace, bCascade, nLimit);
+					return pNeighbor->rayIntersects(result, rayPageRelTerrainSpace, params, bCascade);
 			}
 			return false;
 		}
@@ -405,12 +329,13 @@ namespace Ogre
 		);
 
 		{
-			OHTDD_Translate(-getPosition());
+			const Vector2 p2 = getTilePos();
+			OHTDD_Translate(-Vector3(p2.x, 0, p2.y));
 			OHTDD_Coords(OCS_World, OCS_Terrain);
 
 			OHTDD_Color(DebugDisplay::MC_Blue);
 			OHTDD_Point(rayPageRelTerrainSpace.getPoint(intersection.second));
-			intersection = rayIntersectsMetaWorld(result, rayPageRelTerrainSpace, intersection.second, nLimit);
+			intersection = rayIntersectsMetaWorld(result, rayPageRelTerrainSpace, intersection.second, params);
 		}
 			
 		// Only traverse this test when there have been meta-ball intersections and at least a terrain quad intersection unless we are underground.
@@ -418,9 +343,9 @@ namespace Ogre
 
 		if (!intersection.first && bCascade)
 		{
-			const TerrainTile * pNeighbor = raySelectNeighbour(rayPageRelTerrainSpace, nLimit);
+			const TerrainTile * pNeighbor = raySelectNeighbour(rayPageRelTerrainSpace, params.limit);
 			if (pNeighbor != NULL)
-				return pNeighbor->rayIntersects(result, rayPageRelTerrainSpace, bCascade, nLimit);
+				return pNeighbor->rayIntersects(result, rayPageRelTerrainSpace, params, bCascade);
 		}
 
 		result.hit = intersection.first;
@@ -428,13 +353,15 @@ namespace Ogre
 
 #ifdef _DEBUG
 		if (result.hit)
+		{
 			OHT_DBGTRACE("\t\tResult: " << (_pPage->getManager().toSpace(OCS_Terrain, OCS_World, result.position) + _pPage->getPublic()->getPosition()));
+		}
 #endif // _DEBUG
 
 		return result.hit;
 	}
 
-	std::pair< bool, Real > TerrainTile::rayIntersectsMetaWorld( OverhangTerrainManager::RayResult & result, const Ray & rayPageRelTerrainSpace, const Real tile, const Real nLimit ) const
+	std::pair< bool, Real > TerrainTile::rayIntersectsMetaWorld( OverhangTerrainManager::RayResult & result, const Ray & rayPageRelTerrainSpace, const Real tile, const OverhangTerrainManager::RayQueryParams & params ) const
 	{
 		oht_assert_threadmodel(ThrMdl_Single);
 
@@ -456,25 +383,28 @@ namespace Ogre
 		const YLevel yl0 = computeYLevel(p.z);
 
 		// Data-grid space coordinates of the first would-be meta-cube that the ray would intersect
-		const Vector3 ptOriginCube = getYLevelPosition(yl0, OCS_DataGrid);
+		const AxisAlignedBox bboxOrigin = getYLevelBounds(yl0, OCS_DataGrid);
 
 		// Translate the intersection point so it's relative to the first would-be meta-cube
-		origin -= ptOriginCube;
+		origin -= bboxOrigin.getMinimum();
 
 		OHTDD_Coords(OCS_Terrain, OCS_DataGrid);
 		OHTDD_Translate(-ptOriginCube);
-		OHTDD_Translate(getBBox(OCS_DataGrid).getMinimum());
+		Vector3 ptTerr = Vector3(_bbox.minimum.x, _bbox.minimum.y, 0);
+		OverhangTerrainManager::transformSpace(OCS_Terrain, _options.alignment, OCS_DataGrid, ptTerr);
+		OHTDD_Translate(ptTerr);
 		OHTDD_Color(DebugDisplay::MC_Yellow);
-		
+
 		// Clamp intersection point start to boundaries
-		origin.makeFloor(getBBox(OCS_DataGrid).getSize() - 1.0f / (Real)Voxel::FS_Span);
+		const Vector2 size = _bbox.maximum - _bbox.minimum;
+		origin.makeFloor(Vector3(size.x, std::numeric_limits< Real > ::max(), size.y) - 1.0f / (Real)Voxel::FS_Span);
 		origin.makeCeil(Vector3::ZERO);
 
 		const int nCellsPerCube = (int)_options.tileSize-1;
 
 		// Create a ray in data-grid space with origin relative to the first would-be meta-cube intersected
 		const Ray rayTileCubeIntersectRelDataGridSpace(origin, direction);
-		RayCellWalk walker(rayTileCubeIntersectRelDataGridSpace.getOrigin(), rayTileCubeIntersectRelDataGridSpace.getDirection(), nLimit / _options.cellScale); 
+		RayCellWalk walker(rayTileCubeIntersectRelDataGridSpace.getOrigin(), rayTileCubeIntersectRelDataGridSpace.getDirection(), params.limit / _options.cellScale);
 
 		walker.lod = 0;
 		while (
@@ -485,57 +415,20 @@ namespace Ogre
 		)
 		{
 			const YLevel yl = YLevel::fromCell(walker.wcell.j, nCellsPerCube) + yl0;	// DEPS: Y-Level computation
-			MetaFragMap::const_iterator iMWF = _mapMF.find(yl);	// TODO: Cache this result because yLevel changes very infrequently
 
-			OHT_DBGTRACE(yl);
-			if (iMWF != _mapMF.end())
+			if (params.channels.size == 0)
 			{
-				MetaFragment::Interfaces::Unique fragment = iMWF->second->acquireInterface();
-				
-				const Vector3
-					ptYLevelPos = getYLevelPosition(yl, OCS_DataGrid),
-					ptRel = ptOriginCube - ptYLevelPos;
-
-				OHT_DBGTRACE(
-					"\t\t\t\tFragment: " <<
-					(
-						_pPage->getManager().toSpace(
-							OCS_DataGrid, OCS_World,
-							Vector3(
-								(Real)walker.wcell.i, 
-								(Real)walker.wcell.j, 
-								(Real)walker.wcell.k
-							) + ptOriginCube + getBBox(OCS_DataGrid).getMinimum()
-						) + _pPage->getPublic()->getPosition()
-					)
-					<< ", Y-Level " << yl
-					<< ", local ray spot " << _pPage->getManager().toSpace(OCS_DataGrid, OCS_World, rayTileCubeIntersectRelDataGridSpace.getPoint(ptRel.length()) + ptOriginCube)
-				);
-
-				// Translate ray so it's relative to the current meta-cube's position in data-grid space and coordinates
-				const Ray rayCubeRelDataGridSpace(
-					rayTileCubeIntersectRelDataGridSpace.getOrigin() + ptRel,
-					rayTileCubeIntersectRelDataGridSpace.getDirection()
-				);
-
-				OHTDD_Translate(ptRel);
-				fragment.rayQuery(
-					walker, 
-					WorldCellCoords(
-						0, 
-						DIFF(yl0, yl)*nCellsPerCube,	// DEPS: Y-Level computation
-						0
-					), 
-					rayCubeRelDataGridSpace
-				);
-				result.mwf = iMWF->second;
+				for (Channel::Index< MetaFragMap >::const_iterator j = _index2mapMF.begin(); j != _index2mapMF.end(); ++j)
+					rayQueryWalkCell(result, walker, *j->value, yl, yl0, bboxOrigin, rayTileCubeIntersectRelDataGridSpace, nCellsPerCube);
 			} else
 			{
-				const Vector3 vwc((Real)walker.wcell.i, (Real)walker.wcell.j, (Real)walker.wcell.k);
-				const AxisAlignedBox bboxCell(vwc, vwc + 1);
-				OHTDD_Cube(bboxCell);
+				for (unsigned c = 0; c < params.channels.size; ++c)
+				{
+					Channel::Index< MetaFragMap >::const_iterator j = _index2mapMF.find(params.channels.array[c]);
 
-				++walker;
+					if (j != _index2mapMF.end())
+						rayQueryWalkCell(result, walker, *j->value, yl, yl0, bboxOrigin, rayTileCubeIntersectRelDataGridSpace, nCellsPerCube);
+				}
 			}
 		}
 		result.hit = walker.intersection;
@@ -543,30 +436,81 @@ namespace Ogre
 		return std::pair< bool, Real > (walker.intersection, walker.distance * _options.cellScale + tile);
 	}
 
-	MetaFragment::Container * TerrainTile::acquireMetaWorldFragment( const YLevel yl )
+	void TerrainTile::rayQueryWalkCell(
+		OverhangTerrainManager::RayResult &result,
+		RayCellWalk &walker,
+		const MetaFragMap & mapMF,
+		const YLevel yl,
+		const YLevel yl0,
+		const AxisAlignedBox & bboxOrigin,
+		const Ray &rayTileCubeIntersectRelDataGridSpace,
+		const int nCellsPerCube
+	) const
+	{
+		MetaFragMap::const_iterator iMWF = mapMF.find(yl);	// TODO: Cache this result because yLevel changes very infrequently
+
+		OHT_DBGTRACE(yl);
+		if (iMWF != mapMF.end())
+		{
+			MetaFragment::Interfaces::Unique fragment = iMWF->second->acquireInterface();
+
+			const AxisAlignedBox bboxYL = getYLevelBounds(yl, OCS_DataGrid);
+			const Vector3 ptRel = bboxOrigin.getMinimum() - bboxYL.getMinimum();
+
+			// Translate ray so it's relative to the current meta-cube's position in data-grid space and coordinates
+			const Ray rayCubeRelDataGridSpace(
+				rayTileCubeIntersectRelDataGridSpace.getOrigin() + ptRel,
+				rayTileCubeIntersectRelDataGridSpace.getDirection()
+			);
+
+			OHTDD_Translate(ptRel);
+			fragment.rayQuery(
+				walker,
+				WorldCellCoords(
+					0,
+					DIFF(yl0, yl)*nCellsPerCube,	// DEPS: Y-Level computation
+					0
+				),
+				rayCubeRelDataGridSpace
+			);
+			result.mwf = iMWF->second;
+		} else
+		{
+			const Vector3 vwc((Real)walker.wcell.i, (Real)walker.wcell.j, (Real)walker.wcell.k);
+			const AxisAlignedBox bboxCell(vwc, vwc + 1);
+			OHTDD_Cube(bboxCell);
+
+			++walker;
+		}
+	}
+
+
+	MetaFragment::Container * TerrainTile::acquireMetaWorldFragment( const Channel::Ident channel, const YLevel yl )
 	{
 		oht_assert_threadmodel(ThrMdl_Single);
-		MetaFragMap::iterator iMWF = _mapMF.find(yl);
+		MetaFragMap & mapMF = _index2mapMF[channel];
+		MetaFragMap::iterator iMWF = mapMF.find(yl);
 
-		if (iMWF != _mapMF.end())
+		if (iMWF != mapMF.end())
 			return iMWF->second;
 		else
 		{
-			Vector3 pos = getYLevelPosition(yl, OCS_World);
-			MetaFragment::Container * pMWF = _pPage->getFactory().createMetaFragment(pos, yl);
+			AxisAlignedBox bbox = getYLevelBounds(yl, OCS_World);
+			MetaFragment::Container * pMWF = _pPage->getFactory().getVoxelFactory(channel) ->createMetaFragment(bbox, yl);
 			MetaFragment::Interfaces::Unique fragment = pMWF->acquireInterface();
 
-			_pPage->getManager().transformSpace(OCS_World, OCS_Vertex, pos);
+			_pPage->getManager().transformSpace(OCS_World, OCS_Vertex, bbox);
 
 			// TODO: Threading - Ensure synchronized, revise contract to require client-imposed synchronization and no OGRE calls
-			_pPage->fireOnCreateMetaRegion(fragment.block, &fragment, pos);
+			// TODO: Support channels
+			_pPage->fireOnCreateMetaRegion(channel, fragment.block, &fragment, bbox);
 
-			attachFragment(fragment, pMWF);
+			attachFragment(channel, fragment, pMWF);
 			return pMWF;
 		}
 	}
 	
-	void TerrainTile::propagateMetaObject( DirtyMWFSet & queues, MetaObject * const pMetaObj )
+	void TerrainTile::propagateMetaObject( const Channel::Ident channel, DirtyMWFSet & queues, MetaObject * const pMetaObj )
 	{
 		oht_assert_threadmodel(ThrMdl_Single);
 		const AxisAlignedBox 
@@ -582,7 +526,7 @@ namespace Ogre
 		{
 			OHT_DBGTRACE("\t\t\tY-Level: " << yli);
 
-			pMWF = acquireMetaWorldFragment(yli);
+			pMWF = acquireMetaWorldFragment(channel, yli);
 			MetaFragment::Interfaces::Unique fragment = pMWF->acquireInterface();
 			fragment.addMetaObject(pMetaObj);
 			fragment.updateGrid();
@@ -591,64 +535,59 @@ namespace Ogre
 		}
 	}
 
-	MetaFragMap::iterator TerrainTile::attachFragment( MetaFragment::Interfaces::Unique & fragment, MetaFragment::Container * pMWF )
+	MetaFragMap::iterator TerrainTile::attachFragment( const Channel::Ident channel, MetaFragment::Interfaces::Unique & fragment, MetaFragment::Container * pMWF )
 	{
 		oht_assert_threadmodel(ThrMdl_Single);
-		OgreAssert(_mapMF.find(fragment.ylevel) == _mapMF.end(), "MetaWorldFragment already exists in this terrain tile");
 
-		fragment.addMetaObject(getMetaHeightMap());
-		return _mapMF.insert(_mapMF.begin(), MetaFragMap::value_type (fragment.ylevel, pMWF));
+		MetaFragMap & mapMF = _index2mapMF[channel];
+
+		OgreAssert(mapMF.find(fragment.ylevel) == mapMF.end(), "MetaWorldFragment already exists in this terrain tile");
+
+		return mapMF.insert(mapMF.begin(), MetaFragMap::value_type (fragment.ylevel, pMWF));
 	}
 
-	void TerrainTile::applyFragment( MetaFragment::Interfaces::const_Basic & basic, MetaFragment::Interfaces::Builder & builder )
+	void TerrainTile::applyFragment( const Channel::Ident channel, MetaFragment::Interfaces::const_Basic & basic, MetaFragment::Interfaces::Builder & builder )
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
 
 		OgreAssert(!basic.isInitialized(), "Expected uninitialized fragment");
 
+		MetaFragMap & mapMF = _index2mapMF[channel];
 		MetaFragMap::iterator i, j, k;
-		i = j = k = _mapMF.find(basic.ylevel);
+		i = j = k = mapMF.find(basic.ylevel);
 
-		OgreAssert(j != _mapMF.end(), "Could not find MWF in map");
+		OgreAssert(j != mapMF.end(), "Could not find MWF in map");
 		--i;
 		++k;
 		OgreAssert(
-			(i == _mapMF.end() || i->first < j->first) && 
-			(k == _mapMF.end() || j->first < k->first), 
+			(i == mapMF.end() || i->first < j->first) &&
+			(k == mapMF.end() || j->first < k->first),
 			"Order assumption violated"
 		);
 
-		if (i != _mapMF.end() && DIFF(j->first, i->first) == 1)
+		if (i != mapMF.end() && DIFF(j->first, i->first) == 1)
 			builder.linkNeighbor(OrthoN_BELOW, i->second);
-		if (k != _mapMF.end() && DIFF(j->first, k->first) == -1)
+		if (k != mapMF.end() && DIFF(j->first, k->first) == -1)
 			builder.linkNeighbor(OrthoN_ABOVE, k->second);
 
-		_pPage->linkFragmentHorizontalInternal(this, j);
+		_pPage->linkFragmentHorizontalInternal(channel, this, j);
 	}
 
-	void TerrainTile::addMetaBall( MetaBall * const pMetaBall)
+	void TerrainTile::addMetaObject( const Channel::Ident channel, MetaObject * const pMetaObject )
 	{
 		oht_assert_threadmodel(ThrMdl_Single);
-		const AxisAlignedBox bboxMetaObjectTileSpace = _pPage->getManager().toSpace(OCS_World, OCS_Terrain, pMetaBall->getAABB());
+		const AxisAlignedBox bboxMetaObjectTileSpace = _pPage->getManager().toSpace(OCS_World, OCS_Terrain, pMetaObject->getAABB());
 		const Real nTWS = static_cast< Real > (_pPage->getManager().options.getTileWorldSize());
-
-		// Resets cached data dependent on meta-objects
-		dirty();
 
 		DirtyMWFSet queues;
 
-		propagateMetaObject (queues, pMetaBall);
+		propagateMetaObject (channel, queues, pMetaObject);
 
 		if (!queues.empty())
-		{
-			if (_psetDirtyMF == NULL)
-				_psetDirtyMF = new DirtyMWFSet();
-
-			_psetDirtyMF->insert(queues.begin(), queues.end());
-		}
+			_dirtyMF[channel].insert(queues.begin(), queues.end());
 	}
 
-	void TerrainTile::loadMetaObject( MetaObject * const pMetaObject )
+	void TerrainTile::loadMetaObject( const Channel::Ident channel, MetaObject * const pMetaObject )
 	{
 		oht_assert_threadmodel(ThrMdl_Single);
 
@@ -672,56 +611,57 @@ namespace Ogre
 		{
 			OHT_DBGTRACE("\t\t\tY-Level: " << yli);
 
-			pMWF = acquireMetaWorldFragment(yli);
+			pMWF = acquireMetaWorldFragment(channel, yli);
 			MetaFragment::Interfaces::Unique fragment = pMWF->acquireInterface();
 			fragment.addMetaObject(pMetaObject);
 		}
 	}
 
-	Ogre::Vector3 TerrainTile::getYLevelPosition( const YLevel yl, const OverhangCoordinateSpace encsTo /*= OCS_Terrain*/ ) const
+	Ogre::AxisAlignedBox TerrainTile::getYLevelBounds( const YLevel yl, const OverhangCoordinateSpace encsTo /*= OCS_Terrain*/ ) const
 	{
 		oht_assert_threadmodel(ThrMdl_Single);
 
-		Vector3 ptResult = getPosition(OCS_Terrain);
-		ptResult.z = yl.toYCoord(_pPage->getManager().options.getTileWorldSize());
-		_pPage->getManager().transformSpace(OCS_Terrain, encsTo, ptResult);
-		return ptResult;
+		AxisAlignedBox bbox(
+			_bbox.minimum.x, _bbox.minimum.y, 0,
+			_bbox.maximum.x, _bbox.maximum.y, 0
+		);
+		bbox.setMinimumZ(yl.toYCoord(_pPage->getManager().options.getTileWorldSize()));
+		bbox.setMaximumZ(bbox.getMinimum().z + _pPage->getManager().options.getTileWorldSize());
+		_pPage->getManager().transformSpace(OCS_Terrain, encsTo, bbox);
+		return bbox;
 	}
 
-	MetaFragMap::const_iterator TerrainTile::beginFrags() const
+	MetaFragMap::const_iterator TerrainTile::beginFrags(const Channel::Ident ident) const
 	{
 		oht_assert_threadmodel(ThrMdl_Single);
-		return _mapMF.begin();
+		return _index2mapMF[ident].begin();
 	}
 
-	MetaFragMap::const_iterator TerrainTile::endFrags() const
+	MetaFragMap::const_iterator TerrainTile::endFrags(const Channel::Ident ident) const
 	{
 		oht_assert_threadmodel(ThrMdl_Single);
-		return _mapMF.end();
+		return _index2mapMF[ident].end();
 	}
 
-	void TerrainTile::dirty()
-	{
-		oht_assert_threadmodel(ThrMdl_Single);
-		for (int i = 0; i < NumOCS; ++i)
-		{
-			delete _vpBBox[i];
-			_vpBBox[i] = NULL;
-		}
-	}
 	StreamSerialiser & TerrainTile::operator >> (StreamSerialiser & output) const
 	{
 		oht_assert_threadmodel(ThrMdl_Single);
-		const size_t nCountMWF = _mapMF.size();
 
-		output.write(&nCountMWF);
-		if (nCountMWF > 0)
-			*_pMetaHeightmap >> output;
-		for (MetaFragMap::const_iterator i = beginFrags(); i != endFrags(); ++i)
+		uint16 c = 0;
+		{ for (Channel::Index< MetaFragMap >::const_iterator j = _index2mapMF.begin(); j != _index2mapMF.end(); ++j, c++); }
+		output.write(&c);
+
+		for (Channel::Index< MetaFragMap >::const_iterator j = _index2mapMF.begin(); j != _index2mapMF.end(); ++j)
 		{
-			const MetaFragment::Container * pMWF = i->second;
-			MetaFragment::Interfaces::Shared fragment = pMWF->acquireInterface();
-			fragment >> output;
+			output << j->channel;
+			const size_t nCountMWF = j->value->size();
+			output.write(&nCountMWF);
+			for (MetaFragMap::const_iterator i = j->value->begin(); i != j->value->end(); ++i)
+			{
+				const MetaFragment::Container * pMWF = i->second;
+				MetaFragment::Interfaces::Shared fragment = pMWF->acquireInterface();
+				fragment >> output;
+			}
 		}
 
 		//OHT_DBGTRACE("wrote " << nCountMWF << " meta world fragments");
@@ -730,21 +670,27 @@ namespace Ogre
 	StreamSerialiser & TerrainTile::operator << (StreamSerialiser & input)
 	{
 		oht_assert_threadmodel(ThrMdl_Single);
-		size_t nCountMWF;
-		MetaFragment::Container * pMWF;
+		uint16 nCountChannels;
+		input.read(&nCountChannels);
 
-		input.read(&nCountMWF);
-		if (nCountMWF > 0)
-			*getMetaHeightMap() << input;
-			
-		for (size_t i = 0; i < nCountMWF; ++i)
+		for (uint16 c = 0; c < nCountChannels; ++c)
 		{
-			pMWF = _pPage->getFactory().createMetaFragment();
-			MetaFragment::Interfaces::Builder builder = pMWF->acquireBuilderInterface();
-			MetaFragment::Interfaces::Unique unique = pMWF->acquireInterface();
-			_pPage->fireOnBeforeLoadMetaRegion(&unique);
-			builder << input;
-			attachFragment(unique, pMWF);
+			size_t nCountMWF;
+			MetaFragment::Container * pMWF;
+			Channel::Ident channel;
+
+			input >> channel;
+			input.read(&nCountMWF);
+
+			for (size_t i = 0; i < nCountMWF; ++i)
+			{
+				pMWF = _pPage->getFactory().getVoxelFactory(channel) ->createMetaFragment();
+				MetaFragment::Interfaces::Builder builder = pMWF->acquireBuilderInterface();
+				MetaFragment::Interfaces::Unique unique = pMWF->acquireInterface();
+				_pPage->fireOnBeforeLoadMetaRegion(channel, &unique);
+				builder << input;
+				attachFragment(channel, unique, pMWF);
+			}
 		}
 		//OHT_DBGTRACE("read " << nCountMWF << " meta world fragments");
 
@@ -753,10 +699,13 @@ namespace Ogre
 
 	void TerrainTile::updateVoxels()
 	{
-		for (MetaFragMap::iterator i = _mapMF.begin(); i != _mapMF.end(); ++i)
+		for (Channel::Index< MetaFragMap >::iterator j = _index2mapMF.begin(); j != _index2mapMF.end(); ++j)
 		{
-			MetaFragment::Interfaces::Unique fragment = i->second->acquireInterface();
-			fragment.updateGrid();
+			for (MetaFragMap::iterator i = j->value->begin(); i != j->value->end(); ++i)
+			{
+				MetaFragment::Interfaces::Unique fragment = i->second->acquireInterface();
+				fragment.updateGrid();
+			}
 		}
 	}
 
@@ -765,9 +714,9 @@ namespace Ogre
 		oht_assert_threadmodel(ThrMdl_Main);
 
 		// See if there are new fragments waiting to be attached to the rendering tree
-		if (_psetDirtyMF != NULL)
+		for (Channel::Index< DirtyMWFSet >::iterator j = _dirtyMF.begin(); j != _dirtyMF.end(); ++j)
 		{
-			for (DirtyMWFSet::iterator i = _psetDirtyMF->begin(); i != _psetDirtyMF->end(); ++i)
+			for (DirtyMWFSet::iterator i = j->value->begin(); i != j->value->end(); ++i)
 			{
 				MetaFragment::Interfaces::Builder fragment = i->mwf->acquireBuilderInterface();
 				MetaFragment::Interfaces::const_Basic basic = static_cast< const MetaFragment::Container * > (i->mwf) ->acquireBasicInterface();
@@ -776,8 +725,8 @@ namespace Ogre
 				case DirtyMF::Dirty:
 					if (!basic.isInitialized())
 					{
-						applyFragment(basic, fragment);
-						initialiseMWF(_pPage->getSceneNode(), basic, fragment);
+						applyFragment(j->channel, basic, fragment);
+						initialiseMWF(j->channel, _pPage->getSceneNode(), basic, fragment);
 					}
 					if (bUpdate)
 					{
@@ -787,8 +736,7 @@ namespace Ogre
 				}
 			}
 
-			delete _psetDirtyMF;
-			_psetDirtyMF = NULL;
+			_dirtyMF.erase(j);
 		}
 	}
 
@@ -808,27 +756,10 @@ namespace Ogre
 		return _bParameterized;
 	}
 
-	const Vector3& TerrainTile::getPosition( const OverhangCoordinateSpace encsTo /*= OCS_World*/ ) const
-	{
-		oht_assert_threadmodel(ThrMdl_Single);
-		return getBBox(encsTo).getMinimum();
-	}
-
 	YLevel TerrainTile::computeYLevel( const Real z ) const
 	{
 		oht_assert_threadmodel(ThrMdl_Single);
 		return YLevel::fromYCoord(z, _options.getTileWorldSize());
-	}
-
-	Ogre::Real TerrainTile::height( const signed int x, const signed int y ) const
-	{
-		oht_assert_threadmodel(ThrMdl_Single);
-		using bitmanip::clamp;
-		const signed int nN = _options.pageSize - 1;
-		return _pPage->getPublic()->height(
-			clamp(0, nN, x + (signed int)_x0),
-			clamp(0, nN, y + (signed int)_y0)
-		);
 	}
 
 	void TerrainTile::linkUpAllSurfaces()
@@ -837,26 +768,30 @@ namespace Ogre
 		OgreAssert(_pPage->getPublic()->getSceneNode() == NULL, "Cannot link-up child surfaces of page already set in scene");
 
 		const size_t n = _options.getTilesPerPage() - 1;
+
 		if (p < n)
 			linkNeighbor(VonN_EAST, _pPage->getTerrainTile(p + 1, q));
 		if (q < n)
 			linkNeighbor(VonN_SOUTH, _pPage->getTerrainTile(p, q + 1));
 
-		MetaFragMap::iterator 
-			i0 = _mapMF.begin(),
-			i1 = i0;
-
-		if (i0 != _mapMF.end())
+		for (Channel::Index< MetaFragMap >::iterator k = _index2mapMF.begin(); k != _index2mapMF.end(); ++k)
 		{
-			while (++i1 != _mapMF.end())
+			MetaFragMap::iterator
+				i0 = k->value->begin(),
+				i1 = i0;
+
+			if (i0 != k->value->end())
 			{
-				if (DIFF(i1->first, i0->first) == 1)
+				while (++i1 != k->value->end())
 				{
-					auto fragment = i1->second->acquire< MetaFragment::Interfaces::Builder >();
-					
-					fragment.linkNeighbor(OrthoN_BELOW, i0->second);
+					if (DIFF(i1->first, i0->first) == 1)
+					{
+						auto fragment = i1->second->acquire< MetaFragment::Interfaces::Builder >();
+
+						fragment.linkNeighbor(OrthoN_BELOW, i0->second);
+					}
+					++i0;
 				}
-				++i0;
 			}
 		}
 	}
@@ -865,10 +800,13 @@ namespace Ogre
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
 
-		for (MetaFragMap::iterator i = _mapMF.begin(); i != _mapMF.end(); ++i)
+		for (Channel::Index< MetaFragMap >::iterator j = _index2mapMF.begin(); j != _index2mapMF.end(); ++j)
 		{
-			MetaFragment::Interfaces::Builder fragment = i->second->acquireBuilderInterface();
-			fragment.detachFromScene();
+			for (MetaFragMap::iterator i = j->value->begin(); i != j->value->end(); ++i)
+			{
+				MetaFragment::Interfaces::Builder fragment = i->second->acquireBuilderInterface();
+				fragment.detachFromScene();
+			}
 		}
 	}
 
@@ -876,36 +814,48 @@ namespace Ogre
 	{
 		oht_assert_threadmodel(ThrMdl_Single);
 
-		MetaFragMap::iterator 
-			i = _mapMF.begin(), 
-			j = pNeighborTile->_mapMF.begin();
-
-		while (i != _mapMF.end() && j != pNeighborTile->_mapMF.end())
+		for (Channel::Index< MetaFragMap >::iterator x = _index2mapMF.begin(); x != _index2mapMF.end(); ++x)
 		{
-			while(i->first < j->first)
-				++i;
-			while(j->first < i->first)
-				++j;
+			Channel::Index< MetaFragMap >::iterator y = pNeighborTile->_index2mapMF.find(x->channel);
 
-			auto fragment = i->second->acquire< MetaFragment::Interfaces::Builder > ();
+			if (y != pNeighborTile->_index2mapMF.end())
+			{
+				MetaFragMap::iterator
+					i = x->value->begin(),
+					j = y->value->begin();
 
-			fragment.linkNeighbor((OrthogonalNeighbor)ennNeighbor, j->second);
+				while (i != x->value->end() && j != y->value->end())
+				{
+					while(i->first < j->first)
+						++i;
+					while(j->first < i->first)
+						++j;
 
-			++i;
-			++j;
+					auto fragment = i->second->acquire< MetaFragment::Interfaces::Builder > ();
+
+					fragment.linkNeighbor((OrthogonalNeighbor)ennNeighbor, j->second);
+
+					++i;
+					++j;
+				}
+			}
 		}
 	}
 
-	void TerrainTile::linkNeighbor(const VonNeumannNeighbor ennNeighbor, MetaFragMap::iterator i)
+	void TerrainTile::linkNeighbor(const VonNeumannNeighbor ennNeighbor, const Channel::Ident channel, MetaFragMap::iterator i)
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
 
-		MetaFragMap::iterator j = _mapMF.find(i->first);
-
-		if (j != _mapMF.end())
+		Channel::Index< MetaFragMap >::iterator k = _index2mapMF.find(channel);
+		if (k != _index2mapMF.end())
 		{
-			auto fragment = j->second->acquire< MetaFragment::Interfaces::Builder > ();
-			fragment.linkNeighbor((OrthogonalNeighbor)ennNeighbor, i->second);
+			MetaFragMap::iterator j = k->value->find(i->first);
+
+			if (j != k->value->end())
+			{
+				auto fragment = j->second->acquire< MetaFragment::Interfaces::Builder > ();
+				fragment.linkNeighbor((OrthogonalNeighbor)ennNeighbor, i->second);
+			}
 		}
 	}
 
@@ -913,13 +863,15 @@ namespace Ogre
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
 		
-		for (MetaFragMap::iterator i = _mapMF.begin(); i != _mapMF.end(); ++i)
+		for (Channel::Index< MetaFragMap >::iterator k = _index2mapMF.begin(); k != _index2mapMF.end(); ++k)
 		{
-			auto fragment = i->second->acquire< MetaFragment::Interfaces::Builder > ();
-			fragment.unlinkNeighbor(ennNeighbor);
+			for (MetaFragMap::iterator i = k->value->begin(); i != k->value->end(); ++i)
+			{
+				auto fragment = i->second->acquire< MetaFragment::Interfaces::Builder > ();
+				fragment.unlinkNeighbor(ennNeighbor);
+			}
 		}
 	}
-
 
 	TerrainTile::DirtyMF::DirtyMF( MetaFragment::Container * pMWF, const Status enStatus ) 
 	: mwf(pMWF), _immutable(new MetaFragment::Interfaces::Basic(pMWF->acquireBasicInterface())), status(enStatus)
@@ -948,5 +900,9 @@ namespace Ogre
 	{
 		delete _immutable;
 	}
+
+
+	TerrainTile::ChannelProperties::ChannelProperties()
+		: renderq(RENDER_QUEUE_MAIN) {}
 
 }///namespace Ogre

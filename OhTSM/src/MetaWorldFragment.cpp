@@ -53,11 +53,11 @@ namespace Ogre
 
 		}
 
-		Core::Core( const MetaFactory * pFactory, Voxel::CubeDataRegion * pBlock, const YLevel & ylevel ) 
+		Core::Core( const MetaVoxelFactory * pFactory, Voxel::CubeDataRegion * pBlock, const YLevel & ylevel )
 			:	_bResetting(false), _pSceneNode(NULL),
 				Post(pBlock, ylevel),
 
-			_pMetaFactory(pFactory),
+			factory(pFactory),
 			_pMatInfo(NULL), _nLOD_Requested0(~0), _enStitches_Requested0((Touch3DFlags)~0), _ridBuilderLast(~0)
 		{
 			memset(_vpNeighbors, 0, sizeof(Container *) * 6);
@@ -69,7 +69,7 @@ namespace Ogre
 			OgreAssert(surface == NULL && _pSceneNode == NULL, "Surface already initialized");
 			if (_pMatInfo != NULL)
 			{
-				_pMaterial = _pMetaFactory->acquireMaterial(_pMatInfo->name, _pMatInfo->group);
+				_pMaterial = factory->base->acquireMaterial(_pMatInfo->name, _pMatInfo->group);
 				delete _pMatInfo;
 				_pMatInfo = NULL;
 			}
@@ -78,7 +78,7 @@ namespace Ogre
 
 			OgreAssert(pMWFThis != NULL, "This must be an instance of a meta-fragment");
 
-			surface = _pMetaFactory->createIsoSurfaceRenderable(pMWFThis, sSurfName);
+			surface = factory->createIsoSurfaceRenderable(pMWFThis, sSurfName);
 			surface->initLODMetrics(pPrimaryCam);
 			if (!_pMaterial.isNull())
 				surface->setMaterial(_pMaterial);
@@ -105,6 +105,17 @@ namespace Ogre
 			_vMetaObjects.push_back(mo); 
 		}
 
+		bool Core::removeMetaObject( const MetaObject * const mo )
+		{
+			for (MetaObjsList::const_iterator i = _vMetaObjects.begin(); i != _vMetaObjects.end(); ++i)
+				if (*i == mo)
+				{
+					_vMetaObjects.erase(i);
+					return true;
+				}
+			return false;
+		}
+
 		void Core::clearMetaObjects()
 		{
 			oht_assert_threadmodel(ThrMdl_Single);
@@ -120,7 +131,7 @@ namespace Ogre
 			surface->deleteGeometry();
 			_bResetting = false;
 			if (_ridBuilderLast != ~0)
-				_pMetaFactory->getIsoSurfaceBuilder()->cancelBuild(_ridBuilderLast);
+				factory->base->getIsoSurfaceBuilder()->cancelBuild(_ridBuilderLast);
 
 			_ridBuilderLast = ~0;
 			_nLOD_Requested0 = ~0;
@@ -143,7 +154,7 @@ namespace Ogre
 				OHTDD_Translate(-surface->getWorldBoundingBox(true).getCenter());
 				OHTDD_Coords(OCS_World, OCS_DataGrid);
 
-				_pMetaFactory->getIsoSurfaceBuilder()->build(block, surface, nLOD, enStitches);
+				factory->base->getIsoSurfaceBuilder()->build(block, surface, nLOD, enStitches);
 				_nLOD_Requested0 = nLOD;
 				_enStitches_Requested0 = enStitches;
 			}
@@ -154,7 +165,7 @@ namespace Ogre
 		{
 			oht_assert_threadmodel(ThrMdl_Main);	// Main thread to re-use tracking vars
 			OgreAssert(surface != NULL, "Surface not initialized");
-			IsoSurfaceBuilder * pISB = _pMetaFactory->getIsoSurfaceBuilder();
+			IsoSurfaceBuilder * pISB = factory->base->getIsoSurfaceBuilder();
 
 			if (_bResetting)
 			{
@@ -174,7 +185,7 @@ namespace Ogre
 
 				if (lock)
 				{
-					surface->populateBuffers(pISB, lock.openQueue());
+					surface->populateBuffers(lock.openQueue());
 					return true;
 				} else
 					if (_nLOD_Requested0 != nLOD || _enStitches_Requested0 != enStitches)	// IsoSurfaceBuilder is busy, no data available yet
@@ -370,8 +381,9 @@ namespace Ogre
 			if (_bResetting)
 				generateConfiguration(nLOD, t3dFlags);
 
-			_pMetaFactory->getIsoSurfaceBuilder()
+			factory->base->getIsoSurfaceBuilder()
 				->rayQuery(
+					factory->channel,
 					block, walker, wcctr, 
 					Ray(
 						ray.getOrigin() + block->getBoxSize().getMinimum() / block->getGridScale(), 
@@ -503,8 +515,8 @@ namespace Ogre
 		}
 
 
-		Container::Container(const MetaFactory * pFact, Voxel::CubeDataRegion * pDG, const YLevel yl /*= YLevel()*/)
-			: 	Core(pFact, pDG, yl)
+		Container::Container(const Voxel::MetaVoxelFactory * pFact, Voxel::CubeDataRegion * pDG, const YLevel yl /*= YLevel()*/)
+			: 	Core(pFact, pDG, yl), factory(pFact)
 
 		{
 		}

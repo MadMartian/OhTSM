@@ -35,7 +35,10 @@ http://www.gnu.org/copyleft/lesser.txt.
 
 #include <boost/thread.hpp>
 
+#include <vector>
+
 #include "Neighbor.h"
+#include "ChannelIndex.h"
 
 #include "OverhangTerrainPrerequisites.h"
 
@@ -56,10 +59,11 @@ namespace Ogre
 		/** 
 		@param p x-component of the 2D index of the terrain-tile in its page
 		@param q y-component of the 2D index of the terrain-tile in its page
+		@param descchann The channel descriptor
 		@param page The parent page within which this terrain-tile is contained
 		@param opts The main top-level OhTSM configuration options
 		*/
-		TerrainTile(const size_t p, const size_t q, PagePrivateNonthreaded * const page, const OverhangTerrainOptions & opts);
+		TerrainTile(const size_t p, const size_t q, const Channel::Descriptor & descchann, PagePrivateNonthreaded * const page, const OverhangTerrainOptions & opts);
 		~TerrainTile();
 
 		/** Links up all meta-fragment neighbors in the terrain-tile
@@ -69,8 +73,9 @@ namespace Ogre
 		void linkUpAllSurfaces();
 		
 		/** Links-up meta-fragments in this terrain-tile with corresponding ones in another one
-		@remarks Links-up all meta-fragments in this terrain-tile that correspond to meta-fragments in the
-			specified terrain-tile according to Y-level.
+		@remarks Links-up all meta-fragments in this terrain-tile of the specified channel that
+			correspond to meta-fragments in the specified terrain-tile of the same channel according
+			to Y-level.
 		@param ennNeighbor Identifies where the specified terrain-tile occurs adjacent to this one
 		@param pNeighborTile The neighbor tile to which meta-fragments here-in will be linked
 		*/
@@ -78,11 +83,12 @@ namespace Ogre
 
 		/** Links-up a meta-fragment with a corresponding meta-fragment in this terrain tile
 		@remarks The specified iterator pointer identifies a meta-fragment in the terrain-tile adjacent to this one
-			at the specified Von Neumann neighborhood neighbor location
+			at the specified Von Neumann neighborhood neighbor location for the specified channel
 		@param ennNeighbor Identifies where the specified meta-fragment iterator occurs adjacent to this terrain-tile
+		@param channel The channel of the meta-fragment within which to also link an associated meta-fragment
 		@param i The iterator pointer to a meta-fragment in an adjacent terrain-tile
 		*/
-		void linkNeighbor(const VonNeumannNeighbor ennNeighbor, MetaFragMap::iterator i);
+		void linkNeighbor(const VonNeumannNeighbor ennNeighbor, const Channel::Ident channel, MetaFragMap::iterator i);
 
 		/** Unlinks all meta-fragments linked to the specified neighbor 
 		@remarks This method will work for terrain-tiles that do not occur along a page border, but it is intended
@@ -101,40 +107,18 @@ namespace Ogre
 		*/
 		void initNeighbor(const VonNeumannNeighbor n, TerrainTile * t );
 
+		/// Retrieves the horizontally-aligned (aligned to the "ground") bounding-box for this terrain tile
+		const BBox2D & getTileBBox () const { return _bbox; }
+		/// The horizontally-aligned (aligned to the "ground") position of the tile's center
+		const Vector2 & getTilePos () const { return _pos; }
+
 		/// Determines if this terrain tile has been initialized yet with a call to the 'initialise' method
 		bool isInitialised () const;
 		/// Determines if this terrain tile has been parameterized yet with a call to the overloaded operator << (const PageInitParams::TileParams &) method yet
 		bool isParameterized () const;
 
-		/// Sets the render queue group of all isosurface renderables hosted by this terrain-tile
-		void setRenderQueueGroup(uint8 qid);
-		/** Retrieves the bounding box of this terrain tile
-		@remarks 
-			The coordinates are lazy-generated from the heightmap bbox that is generated during initialization and accounts
-			for meta-fragments.  Therefore the altitude of the bounding box is constricted by the heightmap slice 
-			intersecting with this terrain-tile unless there are meta-fragments that occur outside those bounds effectively 
-			enlarging the bounding region.
-			The bounding box is relative to the page center and can be requested in any coordinate space.
-		@param encsTo Requested coordinate space of the bounding box, default is world coordinates
-		@returns A bounding box relative to the center of the page in the specified coordinate space
-		*/
-		const AxisAlignedBox& getBBox(const OverhangCoordinateSpace encsTo = OCS_World) const;
-
-		/** Retrieves the bounding box of the portion of the heightmap enclosed by this terrain-tile
-		@remarks 
-			The bounding box does not account for any meta-fragments in the terrain-tile, it is representative
-			of the portion of the heightmap enclosed by this terrain tile constricted precisely to the minimum 
-			and maximum altitudes in the heightmap portion.
-			The bounding box is relative to the page center and can be requested in any coordinate space.
-		@param encsTo Requested coordinate space of the bounding box, default is world coordinates
-		@returns A bounding box relative to the center of the page in the specified coordinate space
-		*/
-		const AxisAlignedBox& getHeightMapBBox(const OverhangCoordinateSpace encsTo = OCS_World) const;
-
-		// Retrieves the position aligned to the horizontal plane based at upper-left corner of the terrain-tile in the specified coordinate space
-		const Vector3& getPosition(const OverhangCoordinateSpace encsTo = OCS_World) const;
-		// Retrieves the position aligned to the horizontal plane based at the center of the terrain-tile in the specified coordinate space
-		const Vector3& getCenter(const OverhangCoordinateSpace encsTo = OCS_World) const;
+		/// Sets the render queue group of all isosurface renderables in the specified channel hosted by this terrain-tile
+		void setRenderQueueGroup(const Channel::Ident channel, uint8 qid);
 
 		/** Parameterizes this terrain-tile
 		@remarks Applies the heightmap portion enclosed by this terrain-tile to this terrain-tile effectively
@@ -146,42 +130,45 @@ namespace Ogre
 		/// Initializes this terrain-tile and its meta-fragments binding it to the specified scene node
 		void initialise(SceneNode * pParentSceneNode);
 
-		/// Builds meta-fragments for the space covered by the portion of the heightmap enclosed by this terrain-tile
-		void voxelise();
+		/// Builds meta-fragments for the space covered by the portion of the heightmap enclosed by this terrain-tile, binds the heightmap to all meta-fragments
+		void voxeliseTerrain(MetaHeightMap * const pMetaHeightMap);
+
+		/// Unlinks the heightmap from all meta-fragments in the terrain channel
+		void unlinkeHeightMap(const MetaHeightMap * const pMetaHeightMap);
 
 		// Walks all child renderables detaching them from the scene node, then destroys its scene node
 		void detachFromScene();
 
-		/// Sets the OGRE material for all isosurface renderables in this terrain-tile's meta-fragments
-		void setMaterial(const MaterialPtr& m );
-		/** Returns the terrain height at the given coordinates clamped to the page bounds */
-		Real height(const signed x, const signed y) const;
+		/// Sets the OGRE material for all isosurface renderables of the specified channel in this terrain-tile's meta-fragments
+		void setMaterial(const Channel::Ident channel, const MaterialPtr& m );
 
-		/// Binds the meta-ball to all meta-fragments it intersects and queues it for updating the voxel grid when the main thread gets around to it
-		void addMetaBall(MetaBall * const pMetaBall);
-		/// Used to restore a set of meta-objects from disk, called by the page during a load operation
-		void loadMetaObject(MetaObject * const pMetaObject);
+		/// Binds the meta-ball to all meta-fragments it intersects of the specified channel and queues it for updating the voxel grid when the main thread gets around to it
+		void addMetaObject(const Channel::Ident channel, MetaObject * const pMetaObject);
+		/// Used to restore a set of meta-objects from disk for the specified channel, called by the page during a load operation
+		void loadMetaObject(const Channel::Ident channel, MetaObject * const pMetaObject);
 
-		/// Returns the total number of meta-fragments in this terrain-tile
+		/// Returns the total number of meta-fragments in the specified channel of this terrain-tile
 		inline
-		size_t countFrags() const
+		size_t countFrags(const Channel::Ident channel) const
 		{
 			oht_assert_threadmodel(ThrMdl_Single);
-			return _mapMF.size();
+			Channel::Index< MetaFragMap >::const_iterator j = _index2mapMF.find(channel);
+
+			return j == _index2mapMF.end() ? 0 : j->value->size();
 		}
 
-		/// Determines if there is at least one meta-fragment in this terrain-tile
+		/// Determines if there is at least one meta-fragment in the specified channel of this terrain-tile
 		inline
-		bool hasMetaFrags() const
+		bool hasMetaFrags(const Channel::Ident channel) const
 		{
 			oht_assert_threadmodel(ThrMdl_Single);
-			return !_mapMF.empty();
+			return _index2mapMF.find(channel) == _index2mapMF.end() || !_index2mapMF[channel] .empty();
 		}
 
-		/// Begin iteration over the list of meta-fragments in this terrain-tile
-		MetaFragMap::const_iterator beginFrags () const;
-		/// Last iterator pointer to the list of meta-fragments in this terrain-tile
-		MetaFragMap::const_iterator endFrags() const;
+		/// Begin iteration over the list of meta-fragments in the specified channel of this terrain-tile
+		MetaFragMap::const_iterator beginFrags (const Channel::Ident ident) const;
+		/// Last iterator pointer to the list of meta-fragments in the specified channel of this terrain-tile
+		MetaFragMap::const_iterator endFrags(const Channel::Ident ident) const;
 
 		/// Retrieves the OhTSM manager singleton for managing paged-terrain in the scene
 		const OverhangTerrainManager & getManager() const;
@@ -201,21 +188,22 @@ namespace Ogre
 		@remarks Traverses meta-fragments in the page starting at this terrain-tile.  When the ray traversal crosses this terrain-tile's 
 			boundaries it selects the adjacent terrain-tile and recursively traverses that one calling this method again if the cascade flag 
 			is set.  The result of the query is stored in the specified result parameter and method return value.
-			The search would complete if either the ray hit something or the distance limit was reached or the page boundaries were reached.
-			Must be called from the main thread.
+			The search would complete if either the ray hit something or the distance limit of the parameters object was reached or the page
+			boundaries were reached.  The query is limited to the channels specified in the parameters object.  Must be called from the main thread.
 		@param result The result of the ray query is stored here
 		@param rayPageRelTerrainSpace The ray in terrain-space (i.e. OverhangCoordinateSpace::OCS_Terrain) relative to the page center
+		@param params Parameters influencing the ray query including the set of channels to restrict the query to and the maximum length of
+			the ray to search treating the ray as a line segment to eliminate the inevitable infinite search for true orthodox rays or
+			specify zero for no limit
 		@param cascadeToNeighbours Whether or not to recursively cascade the search operation to neighboring terrain-tiles in the same page 
 			or to terminate after the terrain-tile borders have been reached
-		@param distanceLimit The maximum length of the ray to search treating the ray as a line segment to eliminate the inevitable infinite
-			search for true orthodox rays or specify zero for no limit
 		@returns True if the intersection passed and a triangle in a surface was intersected by the ray, false if nothing was hit
 		*/
 		bool rayIntersects(
 			OverhangTerrainManager::RayResult & result, 
 			const Ray& rayPageRelTerrainSpace, 
-			bool cascadeToNeighbours = false, 
-			Real distanceLimit = 0
+			const OverhangTerrainManager::RayQueryParams & params,
+			bool cascadeToNeighbours = false
 		) const;
 
 		/// Persists this terrain-tile and its meta-fragments to the stream, can be background
@@ -229,49 +217,41 @@ namespace Ogre
 		// TODO: If page bounding box ever changes, callers to this will break.  It assumes page local z
 		YLevel computeYLevel (const Real z) const;
 
-		/** Computes the position in some space given a Y-level based on this terrain-tile's position
-		@param yl The Y-level to influence position
-		@param encsTo The coordinate space to return the position in 
-		@returns A position in the specified coordinate space relative to the page as a multiple of the specified Y-level */
- 		Vector3 getYLevelPosition (const YLevel yl, const OverhangCoordinateSpace encsTo = OCS_Terrain) const;
+		/** Computes the bounding region of a voxel cube in some space given a Y-level based on this terrain-tile's position
+		@param yl The Y-level to influence the bounds
+		@param encsTo The coordinate space to return the bounds in
+		@returns A bounding box of the region in the specified coordinate space relative to the page as a multiple of the specified Y-level */
+		AxisAlignedBox getYLevelBounds (const YLevel yl, const OverhangCoordinateSpace encsTo = OCS_Terrain) const;
 		
-		/// Creates or retrieves a meta-fragment in this terrain-tile at the specified Y-level which is analogous to a vertical coordinate
-		MetaFragment::Container * acquireMetaWorldFragment (const YLevel yl);
-
-		/// Destroys any lazy-generated information such as bounding boxes
-		void dirty();
+		/// Creates or retrieves a meta-fragment in the specified channel of this terrain-tile at the specified Y-level which is analogous to a vertical coordinate
+		MetaFragment::Container * acquireMetaWorldFragment (const Channel::Ident channel, const YLevel yl);
 
 		/** Initializes the specified meta-fragment
 		@remarks Initializes the meta-fragment, creates a new scene node linked to the specified one, positions it, binds the fragment's 
 			isosurface renderable to it, fires the onInitMetaRegion event.
+		@param channel The channel of the meta-fragment
 		@param pParentSceneNode Used to create a child scene node that the fragment's renderable will be bound to
 		@param basic Read=only access facet to basic properties of the meta-fragment
 		@param builder Initialization access facet to the meta-fragment */
-		void initialiseMWF( SceneNode * pParentSceneNode, MetaFragment::Interfaces::const_Basic & basic, MetaFragment::Interfaces::Builder & builder);
+		void initialiseMWF( const Channel::Ident channel, SceneNode * pParentSceneNode, MetaFragment::Interfaces::const_Basic & basic, MetaFragment::Interfaces::Builder & builder);
 
-		// Retrieves the meta-heightmap metaobject that all meta-fragments of this terrain-tile are setup with when created
-		MetaHeightMap * getMetaHeightMap () { return _pMetaHeightmap; }
-
-		/** Adds the specified meta-fragment to this terrain-tile
-		@remarks Does not initialize the meta-fragment, only links it to an internal vector object, so implementors must still call applyFragment.
+		/** Adds the specified meta-fragment to the specified channel of this terrain-tile
+		@remarks Does not initialize the meta-fragment, only links it to an internal vector object associated with the channel, so implementors must still call applyFragment.
+		@param channel The channel of the meta-fragment
 		@param fragment Exclusive access for adding the meta-heightmap metaobject to the meta-fragment
 		@param pMWF A pointer to the meta-fragment itself 
 		@returns An iterator pointer to the newly-inserted meta-fragment in this terrain-tile's internal vector object */
-		MetaFragMap::iterator attachFragment( MetaFragment::Interfaces::Unique & fragment, MetaFragment::Container * pMWF );
+		MetaFragMap::iterator attachFragment( const Channel::Ident channel, MetaFragment::Interfaces::Unique & fragment, MetaFragment::Container * pMWF );
 
 		/** Initializes / prepares the specified meta-fragment
 		@remarks Ensures that the fragment is fully initialized and attached to the world, does nothing if it already is.
-			Links-up neighbors from within the same page.  Must be called from the main thread.
+			Links-up neighbors from within the same page of the same channel.  Must be called from the main thread.
+		@param channel The channel of the meta-fragment
 		@param basic Used to read the fragment's Y-level
 		@param builder Initialization access to the meta-fragment in-case it must be initialized */
-		void applyFragment ( MetaFragment::Interfaces::const_Basic & basic, MetaFragment::Interfaces::Builder & builder );
+		void applyFragment ( const Channel::Ident channel, MetaFragment::Interfaces::const_Basic & basic, MetaFragment::Interfaces::Builder & builder );
 
 	private:
-		/// Pointer to the meta-heightmap metaobject added to every meta-fragment of this terrain-tile when it's created
-		MetaHeightMap * _pMetaHeightmap;
-		/// Material that every meta-fragment is set with
-		MaterialPtr _pMaterial;
-
 		/// Array of neighbors adjacent to this terrain-tile within the same page
 		TerrainTile *_vpInternalNeighbors [ CountVonNeumannNeighbors ];
 		/// Flag indicating whether the 'initialise' method has been called
@@ -283,8 +263,21 @@ namespace Ogre
 		/// Pointer to the hosting page, (provides indirect access to a PageSection object)
 		PagePrivateNonthreaded * _pPage;
 
-		/// Meta-fragments from bottom to top (y direction) indexed by Y-level.
-		MetaFragMap _mapMF;
+		/// Meta-fragments from bottom to top (y direction) indexed by Y-level distributed among channels
+		Channel::Index< MetaFragMap > _index2mapMF;
+
+		/// Various channel-specific properties to maintain
+		struct ChannelProperties
+		{
+			/// Current render queue ID for the channel
+			uint8 renderq;
+			/// Current OGRE material for renderables of the channel
+			MaterialPtr material;
+
+			ChannelProperties();
+		};
+		/// Index of channel-specific properties
+		Channel::Index< ChannelProperties > _properties;
 
 		/// Class used to queue a set of meta-fragments that require updated voxel grids
 		class DirtyMF
@@ -311,17 +304,16 @@ namespace Ogre
 
 			bool operator < (const DirtyMF & other) const;
 		};
+
+		/// Horizontally-aligned (aligned to the "ground") bounding-box for this terrain tile
+		BBox2D _bbox;
+		/// Horizontally-aligned (aligned to the "ground") position of the tile's center
+		Vector2 _pos;
+
 		typedef std::set< DirtyMF > DirtyMWFSet;
+		/// Set of meta-fragments that require updated voxel grids distributed by channel
+		Channel::Index< DirtyMWFSet > _dirtyMF;
 
-		/// Set of meta-fragments that require updated voxel grids
-		DirtyMWFSet * _psetDirtyMF;
-
-		/// Lazy-generated set of bounding boxes for each coordinate system type that account for heightmap and meta-fragments
-		mutable AxisAlignedBox * _vpBBox[NumOCS];
-		/// Set of bounding-boxes for each coordinate system type that account excuslively for heightmap
-		AxisAlignedBox _vHMBBox[NumOCS];
-		/// Set of position vectors for each coordinate system type for the center position of this terrain-tile
-		Vector3 _vCenterPos[NumOCS];
 		/// 2D index for this terrain-tile in its page
 		unsigned _x0, _y0;
 
@@ -338,8 +330,9 @@ namespace Ogre
 		@param result This will be populated with the results of the query
 		@param rayPageRelTerrainSpace The ray we're searching with in terrain-space (OverhangCoordinateSpace::OCS_Terrain) relative to the page center
 		@param tile Ray offset where the ray touches the first meta-fragment in this terrain-tile
-		@param nLimit The maximum length of the ray to search treating the ray as a line segment to eliminate the inevitable infinite
-			search for true orthodox rays or specify zero for no limit
+		@param params Parameters influencing the ray query including the set of channels to restrict the query to and the maximum length of
+			the ray to search treating the ray as a line segment to eliminate the inevitable infinite search for true orthodox rays or
+			specify zero for no limit
 		@returns A pair of values, the first being a boolean indicating whether the ray intersected a triangle or not, and the second being the distance 
 			in world-space from the point where the ray crossed this terrain-tile's border to the point of triangle intersection.
 		*/
@@ -347,18 +340,30 @@ namespace Ogre
 			OverhangTerrainManager::RayResult & result, 
 			const Ray & rayPageRelTerrainSpace, 
 			const Real tile, 
-			const Real nLimit
+			const OverhangTerrainManager::RayQueryParams & params
+		) const;
+
+		void rayQueryWalkCell(
+			OverhangTerrainManager::RayResult &result,
+			RayCellWalk &walker,
+			const MetaFragMap & mapMF,
+			const YLevel yl,
+			const YLevel yl0,
+			const AxisAlignedBox & bboxOrigin,
+			const Ray &rayTileCubeIntersectRelDataGridSpace,
+			const int nCellsPerCube
 		) const;
 
 	protected:
 
-		/** Creates or retrieves, prepares, initializes and updates the 3D voxel grids of the meta-fragments affected by the metaobject.
-		@remarks The specified metaobject is added to each of the meta-fragments it covers in this terrain-tile.  
+		/** Creates or retrieves, prepares, initializes and updates the 3D voxel grids of the meta-fragments of the specified channel affected by the metaobject.
+		@remarks The specified metaobject is added to each of the meta-fragments it covers in the specifid channel of this terrain-tile.
 			Meta-fragments are created, prepared, and initialized as necessary to accommodate the metaobject.
 			The 3D voxel grids are updated for all of these meta-fragments to reflect the new metaobject.
+		@param channel The channel to propagate the meta-object into
 		@param queues All meta-fragments affected by the metaobject are placed into this queue object
 		@param pMetaObject The metaobject that will be applied to this terrain-tile	*/
-		void propagateMetaObject (DirtyMWFSet & queues, MetaObject * const pMetaObj);
+		void propagateMetaObject (const Channel::Ident channel, DirtyMWFSet & queues, MetaObject * const pMetaObj);
 	};
 }//namespace OGRE
 #endif// _OGRE_TERRAIN_TILE_H_

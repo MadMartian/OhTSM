@@ -66,6 +66,50 @@ namespace Ogre
 	class IsoSurfaceBuilder : public WorkQueue::RequestHandler, public WorkQueue::ResponseHandler
 	{
 	public:
+		/** Channel-specific properties that apply to the kind of surface that the builder is currently working-on */
+		class ChannelParameters
+		{
+		public:
+			/// The pre-calculated transition cell vertex transforms for transforming vertices along the full resolution face onto the half
+			struct TransitionCellTranslators
+			{
+				IsoFixVec3 side[CountTouch3DSides];
+
+			} * const _txTCHalf2Full;
+
+			/// Flags determining what kind of vertex properties are supported by the hardware buffer for this channel
+			size_t surfaceFlags;
+			/// Number of levels of details supported for renderables of this channel
+			unsigned short clod;
+			/// Maximum error in pixels for renderables of this channel
+			Real maxPixelError;
+			/// Flip normals of these surfaces
+			bool flipNormals;
+			/// The method used for normal generation on surfaces of this channel
+			NormalsType normalsType;
+
+			/**
+			@param fTCWidthRatio The ratio width of a normal cell that makes-up the width of a transition cell
+			@param nSurfaceFlags Flags determining what kind of vertex properties are supported by the hardware buffer for this channel
+			@param nLODCount Number of levels of details supported for renderables of this channel
+			@param fMaxPixelError Maximum error in pixels for renderables of this channel
+			@param bFlipNormals Flip normals of these surfaces
+			@param enNormalType The method used for normal generation on surfaces of this channel
+			*/
+			ChannelParameters(
+				const Real fTCWidthRatio = 0.5f,
+				const size_t nSurfaceFlags = 0,
+				const unsigned short nLODCount = 5,
+				const Real fMaxPixelError = 8,
+				const bool bFlipNormals = false,
+				const NormalsType enNormalType = NT_None
+			);
+			~ChannelParameters();
+
+		private:
+			static TransitionCellTranslators * createTransitionCellTranslators(const unsigned short nLODCount, const Real fTCWidthRatio);
+		};
+
 #if defined(_DEBUG) || defined(_OHT_LOG_TRACE)
 		class DebugInfo
 		{
@@ -79,25 +123,24 @@ namespace Ogre
 #endif
 		/**
 		@param cubemeta The meta-information singleton that describes all cubical voxel regions in a scene
-		@param nLODCount The number of levels of detail used by this renderable for multi-resolution rendering
-		@param fMaxPixErr The maximum number of pixels allowed on the screen in error before resolution switching occurs
-		@param fTCWidthRatio The percentage size of a regular cell that a transition cell occupies
-		@param bFlipNormals Whether generated normals will be flipped and backwards to the true norm
-		@param ennt The type of normal to generate
+		@param chanopts The channel options index describing surfaces in all channels
 		*/
 		IsoSurfaceBuilder(
 			const Voxel::CubeDataRegionDescriptor & cubemeta, 
-			const unsigned short nLODCount, 
-			const Real fMaxPixErr, 
-			const Real fTCWidthRatio = 0.5f, 
-			const bool bFlipNormals = false, 
-			const ComputeNormalsType ennt = NORMAL_WEIGHTED_AVERAGE
+			const Channel::Index< ChannelParameters > & chanparams
 		);
 
 		virtual ~IsoSurfaceBuilder();
 
-		/** Performs a ray query on the specified surface 
+		/** Generates a combination of surface flags (IsoVertexElements::SurfaceFlags) from the specified channel options
+		@param chanopts Channel options providing the details necessary to determine what surface flags reflect them
+		@returns Combination of IsoVertexElements::SurfaceFlags flags
+		*/
+		static size_t genSurfaceFlags( const OverhangTerrainOptions::ChannelOptions & chanopts );
+
+		/** Performs a ray query on the specified surface in the specified channel
 		@remarks Performs a ray query on the surface represented by pShadow and stores the result in walker
+		@param channel Channel that the surface belongs to
 		@param pDataGrid The cube voxel region that occupies the space of the surface
 		@param walker The walker object that will be updated with the results of this operation
 		@param wcctr World cell coordinates relative to the voxel cube's region
@@ -107,6 +150,7 @@ namespace Ogre
 		@param enTouchFlags The sides of the cubical region that have adjacent stitching information
 		*/
 		void rayQuery (
+			const Channel::Ident channel,
 			const Voxel::CubeDataRegion * pDataGrid, 
 			RayCellWalk & walker, 
 			const WorldCellCoords & wcctr, 
@@ -138,38 +182,6 @@ namespace Ogre
 		*/
 		void build (const Voxel::CubeDataRegion * pCube, IsoSurfaceRenderable * pISR, const unsigned nLOD, const Touch3DFlags enStitches);
 
-		/** Creates a new isosurface object 
-		@remarks This does not perform isosurface extraction, it is simply a factory method
-		@param pMWF The respective world fragment for the new surface
-		@param sName Optional name for the renderable
-		@returns A new renderable instance
-		*/
-		IsoSurfaceRenderable * createIsoSurface (MetaFragment::Container * pMWF, const String & sName = "") const;
-
-		/** Batches geometry to hardware buffers from queued data
-		@remarks Acquires vertex and index data from 'queue' and appends it to the hardware buffers
-		@param pVtxBuffer Hardware vertex buffer to append vertices to
-		@param pIdxBuffer Hardware index buffer that will be set with indices (replaced as opposed to appended)
-		@param queue The pending geometry to batch
-		*/
-		void populateHardwareBuffers(
-			HardwareVertexBufferSharedPtr pVtxBuffer, 
-			HardwareIndexBufferSharedPtr pIdxBuffer, 
-			HardwareShadow::HardwareIsoVertexShadow::ConsumerLock::QueueAccess & queue
-		) const;
-
-		/** Batches geometry to hardware buffers from this object's state
-		@remarks Uses vertex and index data from this object and appends it to the hardware buffers
-		@param pVtxBuffer Hardware vertex buffer to append vertices to
-		@param pIdxBuffer Hardware index buffer that will be set with indices (replaced as opposed to appended)
-		@param pResolution Identifies which LOD the buffers pertain to
-		*/
-		void directlyPopulateHardwareBuffers(
-			HardwareVertexBufferSharedPtr pVtxBuffer, 
-			HardwareIndexBufferSharedPtr pIdxBuffer, 
-			HardwareShadow::LOD * pResolution
-		) const;
-
 	protected:
 		enum RequestType
 		{
@@ -182,7 +194,9 @@ namespace Ogre
 		{
 			const Voxel::CubeDataRegion * cubedata;
 			SharedPtr< HardwareShadow::HardwareIsoVertexShadow > shadow;
+			Channel::Ident channel;
 			unsigned lod;
+			size_t surfaceFlags;
 			Touch3DFlags stitches;
 			size_t vertexBufferCapacity;
 #if defined(_DEBUG) || defined(_OHT_LOG_TRACE)
@@ -198,9 +212,11 @@ namespace Ogre
 #if defined(_DEBUG) || defined(_OHT_LOG_TRACE)
 			const DebugInfo & debugs,
 #endif // _DEBUG
+			const Channel::Ident channel,
 			HardwareShadow::LOD * pResolution,
 			const Voxel::CubeDataRegion * pDataGrid, 
 			SharedPtr< HardwareShadow::HardwareIsoVertexShadow > & pShadow, 
+			const size_t nSurfaceFlags,
 			const Touch3DFlags enStitches, 
 			const size_t nVertexBufferCapacity
 		);
@@ -208,30 +224,14 @@ namespace Ogre
 	private:
 		OGRE_MUTEX(mMutex);
 
-		VertexDeclaration * _pVtxDecl;
-
 		/// Populate the queue with information stored in this object
 		void fillShadowQueues( HardwareShadow::HardwareIsoVertexShadow::ProducerQueueAccess & queue, const Real fVertScale );
 
-		/** The vertex declaration elements used to define the hardware buffers */
-		class VertexDeclarationElements
-		{
-		public:
-			const VertexElement 
-				* const position,
-				* const normal,
-				* const diffuse,
-				* const texcoords;
+		/// The index of per-channel parameters
+		Channel::Index< ChannelParameters > _chanparams;
 
-			VertexDeclarationElements(
-				const VertexElement * pPos, 
-				const VertexElement * pNorm, 
-				const VertexElement * pDiffuse, 
-				const VertexElement * pTexC 
-			)
-			: position(pPos), normal(pNorm), diffuse(pDiffuse), texcoords(pTexC)
-			{}
-		} * _pVtxDeclElems;
+		/// Identifies the channel parameters being used for the current surface the builder is processing at the moment
+		ChannelParameters * _pCurrentChannelParams;
 
 		/** A logical representation of a cell of arbitrary size in 3D space to discretely sample voxels */
 		class GridCell
@@ -743,18 +743,14 @@ namespace Ogre
 		/// Tracks the properties of each half-resolution transition iso-vertex
 		BorderIsoVertexPropertiesVector _vCenterIVP;
 
+		/// Flags indicating what types of elements the current iso-surface supports
+		size_t _nSurfaceFlags;
+
 		/// Which cubes adjacent to this cube have higher resolution
 		Touch3DFlags _enStitches;
 
 		/// The LOD of the data represented in here
 		size_t _nLOD;
-		
-		/// The pre-calculated transition cell vertex transforms for transforming vertices along the full resolution face onto the half
-		struct TransitionCellTranslators
-		{
-			IsoFixVec3 side[CountTouch3DSides];
-
-		} * _txTCHalf2Full;
 
 		/// Reference-counted shared pointer to the data grid associated with this isosurface.
 		const Voxel::CubeDataRegionDescriptor & _cubemeta;
@@ -762,14 +758,6 @@ namespace Ogre
 		unsigned char * _vRegularCases;
 		/// A set of 2D-LUTs for the transition cases
 		unsigned short * _vvTrCase[CountOrthogonalNeighbors];
-		/// Number of levels of details supported
-		unsigned short _nLODCount;
-		/// Maximum error in pixels
-		Real _fMaxPixelError; 
-		/// Flip normals of the surface, the default is false.
-		bool _bFlipNormals;
-		/// The method used for normal generation.
-		ComputeNormalsType _enNormalType;
 
 		/// Containers for full-resolution inside, outside, and half-resolution vertices
 		BorderIsoVertexPropertiesVector _vTransInfos3[3];
@@ -1195,9 +1183,8 @@ namespace Ogre
 
 			/** 
 			@param cubemeta The meta-information singleton describing all voxel cube regions in the scene
-			@param nSurfaceFlags A combination of IsoVertexelements::SurfaceFlags
 			*/
-			MainVertexElements(const Voxel::CubeDataRegionDescriptor & cubemeta, const int nSurfaceFlags);
+			MainVertexElements(const Voxel::CubeDataRegionDescriptor & cubemeta);
 			~MainVertexElements();
 
 			void rollback();

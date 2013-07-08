@@ -29,102 +29,20 @@ http://www.gnu.org/copyleft/lesser.txt.
 
 #include "pch.h"
 #include "CubeDataRegionDescriptor.h"
+#include "OverhangTerrainOptions.h"
 
 namespace Ogre
 {
 	namespace Voxel
 	{
-		DataBase::~DataBase()
-		{
-			delete [] values;
-			delete [] dx;
-			delete [] dy;
-			delete [] dz;
-			delete [] red;
-			delete [] green;
-			delete [] blue;
-			delete [] alpha;
-		}
-
-		DataBase::DataBase(const size_t nCount)
-		:	count(nCount),
-			values( new FieldStrength[nCount]),
-			dx( new signed char [nCount] ),
-			dy( new signed char [nCount] ),
-			dz( new signed char [nCount] ),
-			red( new unsigned char[nCount]),
-			green( new unsigned char[nCount]),
-			blue( new unsigned char[nCount]),
-			alpha( new unsigned char[nCount])
-		{}
-
-		DataBaseFactory::LeaseEx::LeaseEx( const char * szMsg ) 
-		: std::exception(szMsg)
-		{}
-
-		DataBaseFactory::DataBaseFactory( const size_t nBucketElementCount, const size_t nInitialPoolCount /*= 4*/, const size_t nGrowBy /*= 1*/ ) 
-		: _nGrowBy(nGrowBy), _nBucketElementCount(nBucketElementCount)
-		{
-			OgreAssert(nGrowBy > 0, "Grow-by must be at least one");
-			growBy(nInitialPoolCount);
-		}
-		
-		void DataBaseFactory::growBy( const size_t nAmt )
-		{
-			for (size_t c = 0; c < nAmt; ++c)
-				_pool.push_front(new DataBase(_nBucketElementCount));
-		}
-
-		DataBase * DataBaseFactory::lease()
-		{
-			boost::mutex::scoped_lock lock(_mutex);
-
-			if (_pool.empty())
-				growBy(_nGrowBy);
-
-			DataBase * pDataBase = _pool.front();
-			_leased.push_front(pDataBase);
-			_pool.pop_front();
-			return pDataBase;
-		}
-
-		void DataBaseFactory::retire( const DataBase * pDataBase )
-		{
-			boost::mutex::scoped_lock lock(_mutex);
-
-			for (DataBaseList::iterator i = _leased.begin(); i != _leased.end(); ++i)
-				if (*i == pDataBase)
-				{
-					_pool.push_front(*i);
-					_leased.erase(i);
-					return;
-				}
-
-			throw LeaseEx("Cannot retire object, was not previously leased");
-		}
-
-		DataBaseFactory::~DataBaseFactory()
-		{
-			boost::mutex::scoped_lock lock(_mutex);
-
-			if (!_leased.empty())
-				throw LeaseEx("Cannot deconstruct factory, there are still some objects checked-out of the pool");
-
-			for (DataBaseList::iterator i = _pool.begin(); i != _pool.end(); ++i)
-				delete *i;
-		}
-
-		CubeDataRegionDescriptor::CubeDataRegionDescriptor( const DimensionType nVertexDimensions, const Real nScale, const int nFlags )
+		CubeDataRegionDescriptor::CubeDataRegionDescriptor( const DimensionType nVertexDimensions, const Real nScale)
 			: 
-				factoryDB(nVertexDimensions*nVertexDimensions*nVertexDimensions),
 				dimensions(nVertexDimensions - 1), _nDimOrder2(unsigned char (logf(nVertexDimensions)/logf(2))), 
 				scale(nScale), 
 				gpcount(nVertexDimensions*nVertexDimensions*nVertexDimensions), 
 				sidegpcount(nVertexDimensions*nVertexDimensions),
 				cellcount((nVertexDimensions - 1)*(nVertexDimensions - 1)*(nVertexDimensions - 1)), 
 				sidecellcount((nVertexDimensions - 1)*(nVertexDimensions - 1)),
-				_flags(nFlags),
-
 				coordsIndexTx(computeCoordsIndexTx(nVertexDimensions)),
 				cellIndexTx(computeCellIndexTx(nVertexDimensions))
 		{
@@ -139,7 +57,7 @@ namespace Ogre
 			IsoFixVec3 position = -vfExtent;
 
 			const Vector3 vExtent = Vector3(dimensions, dimensions, dimensions) * scale / 2;
-			mBoxSize.setExtents(-vExtent, vExtent);
+			_bboxSize.setExtents(-vExtent, vExtent);
 
 			// Initialize grid vertices
 			for (DimensionType k = 0; k <= dimensions; ++k)

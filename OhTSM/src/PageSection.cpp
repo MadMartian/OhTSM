@@ -51,14 +51,16 @@ namespace Ogre
 	const uint32 PageSection::CHUNK_ID = StreamSerialiser::makeIdentifier("OHPS");
 	const uint16 PageSection::VERSION = 1;
 
-    //-------------------------------------------------------------------------
-    PageSection::PageSection(const OverhangTerrainManager * mgr, MetaFactory * const pMetaFactory)
+	//-------------------------------------------------------------------------
+	PageSection::PageSection(const OverhangTerrainManager * mgr, MetaBaseFactory * const pMetaFactory, const Channel::Descriptor & descchann)
 		: manager(mgr), _nTileCount(mgr->options.getTilesPerPage()), _pFactory(pMetaFactory),
-		 _pScNode(NULL), _bDirty(false), _pPrivate(NULL), _vHeightmap(NULL)
-    {
+		 _descchann(descchann), _vvListeners(descchann),
+		 _pScNode(NULL), _bDirty(false), _pPrivate(NULL), _pMetaHeightmap(NULL)
+	{
 		oht_assert_threadmodel(ThrMdl_Main);
 
 		_pPrivate = new PagePrivateNonthreaded(this);
+		_pMetaHeightmap = new MetaHeightMap();
 
 		_vpNeighbors[VonN_NORTH] =
 		_vpNeighbors[VonN_SOUTH] =
@@ -66,40 +68,40 @@ namespace Ogre
 		_vpNeighbors[VonN_WEST] = NULL;
 
 		// Set up an empty array of TerrainTile pointers
-        size_t i, j;
-        for ( i = 0; i < _nTileCount; i++ )
-        {
-            _vTiles.push_back( TerrainRow() );
+		size_t i, j;
+		for ( i = 0; i < _nTileCount; i++ )
+		{
+			_vTiles.push_back( TerrainRow() );
 
-            for ( j = 0; j < _nTileCount; j++ )
-            {
+			for ( j = 0; j < _nTileCount; j++ )
+			{
 
 				// Create scene node for the tile and the TerrainRenderable
-                _vTiles[ i ].push_back( OGRE_NEW TerrainTile(i,j, _pPrivate, manager->options) );
-            }
-        }
+				_vTiles[ i ].push_back( OGRE_NEW TerrainTile(i,j, descchann, _pPrivate, manager->options) );
+			}
+		}
 
-        for ( size_t j = 0; j < _nTileCount; j++ )
-        {
-            for ( size_t i = 0; i < _nTileCount; i++ )
-            {
-                if ( j != _nTileCount - 1 )
-                {
-                    _vTiles[ i ][ j ] -> initNeighbor( VonN_SOUTH, _vTiles[ i ][ j + 1 ] );
-                    _vTiles[ i ][ j + 1 ] -> initNeighbor( VonN_NORTH, _vTiles[ i ][ j ] );
-                }
+		for ( size_t j = 0; j < _nTileCount; j++ )
+		{
+			for ( size_t i = 0; i < _nTileCount; i++ )
+			{
+				if ( j != _nTileCount - 1 )
+				{
+					_vTiles[ i ][ j ] -> initNeighbor( VonN_SOUTH, _vTiles[ i ][ j + 1 ] );
+					_vTiles[ i ][ j + 1 ] -> initNeighbor( VonN_NORTH, _vTiles[ i ][ j ] );
+				}
 
-                if ( i != _nTileCount - 1 )
-                {
-                    _vTiles[ i ][ j ] -> initNeighbor( VonN_EAST, _vTiles[ i + 1 ][ j ] );
-                    _vTiles[ i + 1 ][ j ] -> initNeighbor( VonN_WEST, _vTiles[ i ][ j ] );
-                }
-            }
-        }
-    }
-    //-------------------------------------------------------------------------
-    PageSection::~PageSection()
-    {
+				if ( i != _nTileCount - 1 )
+				{
+					_vTiles[ i ][ j ] -> initNeighbor( VonN_EAST, _vTiles[ i + 1 ][ j ] );
+					_vTiles[ i + 1 ][ j ] -> initNeighbor( VonN_WEST, _vTiles[ i ][ j ] );
+				}
+			}
+		}
+	}
+	//-------------------------------------------------------------------------
+	PageSection::~PageSection()
+	{
 		OHT_DBGTRACE("Delete Page " << this);
 		oht_assert_threadmodel(ThrMdl_Single);
 
@@ -109,8 +111,11 @@ namespace Ogre
 		typedef std::list< MetaObject * > MOList;
 		MOList poplist;
 
-		for (MetaObjectIterator i = iterateMetaObjects(); i; ++i)
-			poplist.push_back(&(*i));
+		for (Channel::Descriptor::iterator j = _descchann.begin(); j != _descchann.end(); ++j)
+		{
+			for (MetaObjectIterator i = iterateMetaObjects(*j); i; ++i)
+				poplist.push_back(&(*i));
+		}
 		for (MOList::iterator i = poplist.begin(); i != poplist.end(); ++i)
 			delete *i;
 
@@ -122,17 +127,14 @@ namespace Ogre
 			jend = i->end();
 			for (j = i->begin(); j != jend; ++j)
 			{
+				(*j)->unlinkeHeightMap(_pMetaHeightmap);
 				OGRE_DELETE *j;
 				*j = NULL;
 			}
 		}
-
-
-		// TODO: Deconstruct multi-referenced meta objects
-
+		delete _pMetaHeightmap;
 		delete _pPrivate;
-		delete [] _vHeightmap;
-    }
+	}
 
 	void PageSection::initialise( SceneNode * const pScNode )
 	{
@@ -142,6 +144,8 @@ namespace Ogre
 		OgreAssert(_pScNode == NULL, "Cannot initialize more than once");
 		_pScNode = pScNode;
 		
+		_pMetaHeightmap->setPosition(_pScNode->getPosition());
+
 		const size_t nTPP = manager->options.getTilesPerPage();
 		SceneManager * const pSceneMgr = _pScNode->getCreator();
 
@@ -158,10 +162,7 @@ namespace Ogre
 	{
 		oht_assert_threadmodel(ThrMdl_Background);
 
-		OgreAssert(_vHeightmap == NULL, "Cannot load params more than once");
-
-		_vHeightmap = new Real[params.countVerticesPerPage];
-		memcpy(_vHeightmap, params.heightmap, params.countVerticesPerPage * sizeof(*_vHeightmap));
+		_pMetaHeightmap->load(params.heightmap, params.countVerticesPerPageSide, params.countVerticesPerPageSide, manager->options.cellScale, manager->options.heightScale);
 
 		_x = params.pageX;
 		_y = params.pageY;
@@ -177,7 +178,7 @@ namespace Ogre
 
 		for (Terrain2D::iterator j = _vTiles.begin(); j != _vTiles.end(); ++j)
 			for (TerrainRow::iterator i = j->begin(); i != j->end(); ++i)
-				(*i)->voxelise();
+				(*i)->voxeliseTerrain(_pMetaHeightmap);
 
 		for (Terrain2D::iterator j = _vTiles.begin(); j != _vTiles.end(); ++j)
 			for (TerrainRow::iterator i = j->begin(); i != j->end(); ++i)
@@ -257,7 +258,7 @@ namespace Ogre
 		}
 	}
 
-	void PageSection::linkFragmentHorizontalInternal( TerrainTile * pHost, MetaFragMap::iterator i )
+	void PageSection::linkFragmentHorizontalInternal( const Channel::Ident channel, TerrainTile * pHost, MetaFragMap::iterator i )
 	{
 		const size_t 
 			p = pHost->p,
@@ -268,25 +269,25 @@ namespace Ogre
 		if (q > 0)
 		{
 			TerrainTile * pTile = _vTiles[p][q - 1];
-			pTile->linkNeighbor(VonN_SOUTH, i);
+			pTile->linkNeighbor(VonN_SOUTH, channel, i);
 		}
 
 		if (q < n)
 		{
 			TerrainTile * pTile = _vTiles[p][q + 1];
-			pTile->linkNeighbor(VonN_NORTH, i);
+			pTile->linkNeighbor(VonN_NORTH, channel, i);
 		}
 
 		if (p > 0)
 		{
 			TerrainTile * pTile = _vTiles[p - 1][q];
-			pTile->linkNeighbor(VonN_EAST, i);
+			pTile->linkNeighbor(VonN_EAST, channel, i);
 		}
 
 		if (p < n)
 		{
 			TerrainTile * pTile = _vTiles[p + 1][q];
-			pTile->linkNeighbor(VonN_WEST, i);
+			pTile->linkNeighbor(VonN_WEST, channel, i);
 		}
 	}
 
@@ -371,7 +372,7 @@ namespace Ogre
 			unlinkPageNeighbor(VonN_WEST);
 	}
 
-    //-------------------------------------------------------------------------
+	//-------------------------------------------------------------------------
 	TerrainTile * PageSection::getTerrainTile( const Vector3 & pt, const OverhangCoordinateSpace encsFrom /*= OCS_World */ ) const
 	{
 		oht_assert_threadmodel(ThrMdl_Single);
@@ -383,9 +384,9 @@ namespace Ogre
 			return _vTiles[(unsigned)ptTerrSpace.x][(unsigned)ptTerrSpace.y];
 		else
 			return NULL;
-    }
+	}
 	//-------------------------------------------------------------------------
-	void PageSection::setRenderQueue(uint8 qid)
+	void PageSection::setRenderQueue(const Channel::Ident channel, uint8 qid)
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
 
@@ -395,7 +396,7 @@ namespace Ogre
 			{
 				if ( j != _nTileCount - 1 )
 				{
-					_vTiles[ i ][ j ]->setRenderQueueGroup(qid);
+					_vTiles[ i ][ j ]->setRenderQueueGroup(channel, qid);
 				}
 			}
 		}
@@ -418,19 +419,19 @@ namespace Ogre
 		return _pScNode->getPosition();
 	}
 
-	void PageSection::setMaterial( const MaterialPtr & m )
+	void PageSection::setMaterial( const Channel::Ident channel, const MaterialPtr & m )
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
 		for ( size_t j = 0; j < _nTileCount; j++ )
 		{
 			for ( size_t i = 0; i < _nTileCount; i++ )
 			{
-				_vTiles[ i ][ j ]->setMaterial (m);
+				_vTiles[ i ][ j ]->setMaterial (channel, m);
 			}
 		}
 	}
 
-	bool PageSection::rayIntersects(OverhangTerrainManager::RayResult & result, const Ray& ray, Real distanceLimit /*= 0*/ ) const
+	bool PageSection::rayIntersects( OverhangTerrainManager::RayResult & result, const Ray& ray, const OverhangTerrainManager::RayQueryParams & params ) const
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
 		const Real nHPWsz = manager->options.getPageWorldSize() / 2;
@@ -526,12 +527,12 @@ namespace Ogre
 				}
 			}
 
-			if (nDistX < distanceLimit || !distanceLimit)
+			if (nDistX < params.limit || !params.limit)
 			{
 				pHitX = rayLocal.getPoint(nDistX);
 				OHT_DBGTRACE("\t\tHit X-wise=" << (manager->toSpace(OCS_Terrain, OCS_World, pHitX) + getPosition()));
 			}
-			if (nDistY < distanceLimit || !distanceLimit)
+			if (nDistY < params.limit || !params.limit)
 			{
 				pHitY = rayLocal.getPoint(nDistY);
 				OHT_DBGTRACE("\t\tHit Y-wise=" << (manager->toSpace(OCS_Terrain, OCS_World, pHitY) + getPosition()));
@@ -557,7 +558,7 @@ namespace Ogre
 
 		OHTDD_Translate(-getPosition());
 
-		if (pTile->rayIntersects(result, rayLocal, true, distanceLimit))
+		if (pTile->rayIntersects(result, rayLocal, params, true))
 		{
 			OverhangTerrainManager::transformSpace(OCS_Terrain, manager->options.alignment, OCS_World, result.position, manager->options.cellScale);
 
@@ -570,13 +571,13 @@ namespace Ogre
 		} else
 		{
 			OHTDD_Color(DebugDisplay::MC_Yellow);
-			OHTDD_Line(ray.getOrigin() - getPosition(), ray.getPoint(distanceLimit) - getPosition());
+			OHTDD_Line(ray.getOrigin() - getPosition(), ray.getPoint(params.limit) - getPosition());
 
 			return false;
 		}
 	}
 
-	void PageSection::operator << ( const MetaObjsList & objs )
+	void PageSection::loadMetaObjects ( const Channel::Ident channel, const MetaObjsList & objs )
 	{
 		oht_assert_threadmodel(ThrMdl_Background);
 
@@ -600,18 +601,18 @@ namespace Ogre
 						vObjMeta[c].object->getObjectType() != MetaObject::MOT_HeightMap &&
 						vObjMeta[c].object->getObjectType() != MetaObject::MOT_Invalid &&
 
-						(*i)->getBBox(OCS_Terrain).intersects(vObjMeta[c].bbox)
+						(*i)->getTileBBox().intersects(vObjMeta[c].bbox)
 					)
-						(*i)->loadMetaObject(vObjMeta[c].object);
+						(*i)->loadMetaObject(channel, vObjMeta[c].object);
 
 		delete [] vObjMeta;
 	}
 
-	void PageSection::addMetaBallImpl( MetaBall * const pMetaBall )
+	void PageSection::addMetaObjectImpl( const Channel::Ident channel, MetaObject * const pMetaObj )
 	{
 		oht_assert_threadmodel(ThrMdl_Background);
 
-		const AxisAlignedBox bboxMetaObjectTileSpace = manager->toSpace(OCS_World, OCS_Vertex, pMetaBall->getAABB());
+		const AxisAlignedBox bboxMetaObjectTileSpace = manager->toSpace(OCS_World, OCS_Vertex, pMetaObj->getAABB());
 		const Real
 			nTS = manager->options.getTileWorldSize() / manager->options.cellScale,
 			yext = bboxMetaObjectTileSpace.getMaximum().y + nTS + 1,
@@ -619,9 +620,9 @@ namespace Ogre
 		Vector3 vecTileWalk;
 
 		OHT_DBGTRACE(
-			"\taddMetaObject: " << pMetaBall->getPosition() << ", " << 
-			"type=" << pMetaBall->getObjectType() << ", " << 
-			"bbox=" << pMetaBall->getAABB()
+			"\taddMetaObject: " << pMetaObj->getPosition() << ", " <<
+			"type=" << pMetaObj->getObjectType() << ", " <<
+			"bbox=" << pMetaObj->getAABB()
 		);
 
 		// TODO: This algorithm is probably wrong, see corresponding code in OverhangTerrainGroup
@@ -633,8 +634,7 @@ namespace Ogre
 
 				if (pTile != NULL)
 				{
-					OHT_DBGTRACE("\t\tTile, " << pTile->getBBox());
-					pTile->addMetaBall(pMetaBall);
+					pTile->addMetaObject(channel, pMetaObj);
 				}
 			}
 		}
@@ -645,7 +645,8 @@ namespace Ogre
 		oht_assert_threadmodel(ThrMdl_Background);
 		OgreAssert(_pScNode != NULL, "The page has not been initialized");
 
-		addMetaBallImpl(_pFactory->createMetaBall(position, radius, excavating));
+		// TODO: May not be very cohesive to reference the terrain channel here
+		addMetaObjectImpl(TERRAIN_ENTITY_CHANNEL, _pFactory->createMetaBall(position, radius, excavating));
 		_bDirty = true;
 	}
 
@@ -655,19 +656,24 @@ namespace Ogre
 
 		output.writeChunkBegin(CHUNK_ID, VERSION);
 
+		*_pMetaHeightmap >> output;
+
 		for (size_t j = 0; j < _nTileCount; ++j)
 			for (size_t i = 0; i < _nTileCount; ++i)
 				*_vTiles[i][j] >> output;
 
-		for (MetaObjectIterator i = iterateMetaObjects(); i; ++i)
+		for (Channel::Descriptor::iterator j = _descchann.begin(); j != _descchann.end(); ++j)
 		{
-			const MetaObject::MOType enmot = i->getObjectType();
+			for (MetaObjectIterator i = iterateMetaObjects(*j); i; ++i)
+			{
+				const MetaObject::MOType enmot = i->getObjectType();
 
+				output.write(&enmot);
+				*i >> output;
+			}
+			const MetaObject::MOType enmot = MetaObject::MOT_Invalid;
 			output.write(&enmot);
-			*i >> output;
 		}
-		const MetaObject::MOType enmot = MetaObject::MOT_Invalid;
-		output.write(&enmot);
 
 		output.writeChunkEnd(CHUNK_ID);
 
@@ -680,6 +686,8 @@ namespace Ogre
 		if (!input.readChunkBegin(CHUNK_ID, VERSION))
 			OGRE_EXCEPT(Exception::ERR_ITEM_NOT_FOUND, "Stream does not contain PageSection object data", __FUNCTION__);
 
+		*_pMetaHeightmap << input;
+
 		for (size_t j = 0; j < _nTileCount; ++j)
 			for (size_t i = 0; i < _nTileCount; ++i)
 				*_vTiles[i][j] << input;
@@ -688,22 +696,26 @@ namespace Ogre
 		MetaObject * mo;
 		MetaObjsList vMetaObjs;
 
-		do 
+
+		for (Channel::Descriptor::iterator j = _descchann.begin(); j != _descchann.end(); ++j)
 		{
-			input.read(&enmot);
-			switch (enmot)
+			do
 			{
-			case MetaObject::MOT_MetaBall:
-				mo = _pFactory->createMetaBall();
-				*mo << input;
-				vMetaObjs.push_back(mo);
-				break;
-			}
-		} while (enmot != MetaObject::MOT_Invalid);
+				input.read(&enmot);
+				switch (enmot)
+				{
+				case MetaObject::MOT_MetaBall:
+					mo = _pFactory->createMetaBall();
+					*mo << input;
+					vMetaObjs.push_back(mo);
+					break;
+				}
+			} while (enmot != MetaObject::MOT_Invalid);
+
+			this->loadMetaObjects(*j, vMetaObjs);
+		}
 
 		input.readChunkEnd(CHUNK_ID);
-
-		*this << vMetaObjs;
 
 		return input;
 	}
@@ -718,86 +730,96 @@ namespace Ogre
 				_vTiles[i][j] -> commitOperation();
 	}
 
-	void PageSection::addListener( IOverhangTerrainListener * pListener )
+	void PageSection::addListener( const Channel::Ident channel, IOverhangTerrainListener * pListener )
 	{
 		oht_assert_threadmodel(ThrMdl_Single);
 			
-		_vListeners.insert(pListener);
+		_vvListeners[channel].insert(pListener);
 	}
 
-	void PageSection::removeListener( IOverhangTerrainListener * pListener )
+	void PageSection::removeListener( const Channel::Ident channel, IOverhangTerrainListener * pListener )
 	{
 		oht_assert_threadmodel(ThrMdl_Single);
 
-		_vListeners.erase(pListener);
+		_vvListeners[channel].erase(pListener);
 	}
 
-	void PageSection::fireOnBeforeLoadMetaRegion( MetaFragment::Interfaces::Unique * pFragment )
+	void PageSection::fireOnBeforeLoadMetaRegion( const Channel::Ident channel, MetaFragment::Interfaces::Unique * pFragment )
 	{
 		oht_assert_threadmodel(ThrMdl_Background);
 
 		OverhangTerrainSupportsCustomData cube (pFragment->custom);
 
-		for (ListenerSet::iterator i = _vListeners.begin(); i != _vListeners.end(); ++i)
+		Channel::Index< ListenerSet >::iterator j = _vvListeners.find(channel);
+		if (j != _vvListeners.end())
 		{
-			if ((*i)->onBeforeLoadMetaRegion(this, &cube))
-				break;
+			for (ListenerSet::iterator i = j->value->begin(); i != j->value->end(); ++i)
+			{
+				if ((*i)->onBeforeLoadMetaRegion(this, &cube))
+					break;
+			}
 		}
 	}
 
-	void PageSection::fireOnCreateMetaRegion( Voxel::CubeDataRegion * pCubeDataRegion, MetaFragment::Interfaces::Unique * pUnique, const Vector3 & vertpos )
+	void PageSection::fireOnCreateMetaRegion( const Channel::Ident channel, Voxel::CubeDataRegion * pCubeDataRegion, MetaFragment::Interfaces::Unique * pUnique, const AxisAlignedBox & bbox )
 	{
 		oht_assert_threadmodel(ThrMdl_Background);
-
-		// Coordinates in page space are based at horizontal center so the x and y coordinates have to be rebased relative to the top-left corner of the page
-		const Real nHPTVXsz = manager->options.getPageWorldSize() / (2.0f * manager->options.cellScale);
-		const Real 
-			xc = vertpos.x + nHPTVXsz,
-			yc = vertpos.y + nHPTVXsz;
 
 		OverhangTerrainMetaCube cube (
 			pCubeDataRegion,
 			pUnique,
 
-			static_cast< int > (xc), 
-			static_cast< int > (yc), 
-			static_cast< int > (vertpos.z),
+			static_cast< int > (bbox.getMinimum().x), 
+			static_cast< int > (bbox.getMinimum().y), 
+			static_cast< int > (bbox.getMinimum().z),
 
-			static_cast< int > (xc + manager->options.tileSize - 1), 
-			static_cast< int > (yc + manager->options.tileSize - 1), 
-			static_cast< int > (vertpos.z + manager->options.tileSize - 1)
+			static_cast< int > (bbox.getMaximum().x), 
+			static_cast< int > (bbox.getMaximum().y), 
+			static_cast< int > (bbox.getMaximum().z)
 		);
 
-		for (ListenerSet::iterator i = _vListeners.begin(); i != _vListeners.end(); ++i)
+		Channel::Index< ListenerSet >::iterator j = _vvListeners.find(channel);
+		if (j != _vvListeners.end())
 		{
-			if ((*i)->onCreateMetaRegion(this, &cube))
-				break;
+			for (ListenerSet::iterator i = j->value->begin(); i != j->value->end(); ++i)
+			{
+				if ((*i)->onCreateMetaRegion(this, &cube))
+					break;
+			}
 		}
 	}
 
-	void PageSection::fireOnInitMetaRegion(MetaFragment::Interfaces::const_Basic * pBasic, MetaFragment::Interfaces::Builder * pBuilder)
+	void PageSection::fireOnInitMetaRegion(const Channel::Ident channel, MetaFragment::Interfaces::const_Basic * pBasic, MetaFragment::Interfaces::Builder * pBuilder)
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
 
 		OverhangTerrainRenderable cube (pBuilder);
 
-		for (ListenerSet::iterator i = _vListeners.begin(); i != _vListeners.end(); ++i)
+		Channel::Index< ListenerSet >::iterator j = _vvListeners.find(channel);
+		if (j != _vvListeners.end())
 		{
-			if ((*i)->onInitMetaRegion(this, &cube))
-				break;
+			for (ListenerSet::iterator i = j->value->begin(); i != j->value->end(); ++i)
+			{
+				if ((*i)->onInitMetaRegion(this, &cube))
+					break;
+			}
 		}
 	}
 
-	void PageSection::fireOnDestroyMetaRegion( MetaFragment::Interfaces::Unique * pUnique )
+	void PageSection::fireOnDestroyMetaRegion(const Channel::Ident channel, MetaFragment::Interfaces::Unique * pUnique )
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
 
 		OverhangTerrainSupportsCustomData custom(pUnique->custom);
 
-		for (ListenerSet::iterator i = _vListeners.begin(); i != _vListeners.end(); ++i)
+		Channel::Index< ListenerSet >::iterator j = _vvListeners.find(channel);
+		if (j != _vvListeners.end())
 		{
-			if ((*i)->onDestroyMetaRegion(this, &custom))
-				break;
+			for (ListenerSet::iterator i = j->value->begin(); i != j->value->end(); ++i)
+			{
+				if ((*i)->onDestroyMetaRegion(this, &custom))
+					break;
+			}
 		}
 	}
 
@@ -836,18 +858,18 @@ namespace Ogre
 		}
 	}
 
-	Ogre::MetaFragmentIterator PageSection::iterateMetaFrags()
+	Ogre::MetaFragmentIterator PageSection::iterateMetaFrags(const Channel::Ident channel)
 	{
-		return MetaFragmentIterator(_pPrivate);
+		return MetaFragmentIterator(channel, _pPrivate);
 	}
 
-	const MetaObjectIterator PageSection::iterateMetaObjects() const
+	const MetaObjectIterator PageSection::iterateMetaObjects( const Channel::Ident channel ) const
 	{
-		return MetaObjectIterator(this->_pPrivate, MetaObject::MOT_MetaBall, MetaObject::MOT_Invalid);
+		return MetaObjectIterator(this->_pPrivate, channel, MetaObject::MOT_MetaBall, MetaObject::MOT_Invalid);
 	}
 
-	MetaObjectIterator::MetaObjectIterator( const PagePrivateNonthreaded * pPage, MetaObject::MOType enmoType, ... ) 
-		: _pPage(pPage), _pUniqueInterface(NULL), _nTileCount(pPage->getManager().options.getTilesPerPage())
+	MetaObjectIterator::MetaObjectIterator( const PagePrivateNonthreaded * pPage, const Channel::Ident channel, MetaObject::MOType enmoType, ... )
+		: _pPage(pPage), _channel(channel), _pUniqueInterface(NULL), _nTileCount(pPage->getManager().options.getTilesPerPage())
 	{
 		OHT_CR_INIT();
 		va_list aenmoTypes;
@@ -872,9 +894,9 @@ namespace Ogre
 			for (_nTileQ = 0; _nTileQ < _nTileCount; ++_nTileQ)
 			{
 				_pTile = _pPage->getTerrainTile(_nTileP, _nTileQ);
-				if (_pTile->hasMetaFrags())
+				if (_pTile->hasMetaFrags(_channel))
 				{
-					for (_iFrags = _pTile->beginFrags(); _iFrags != _pTile->endFrags(); ++_iFrags)
+					for (_iFrags = _pTile->beginFrags(_channel); _iFrags != _pTile->endFrags(_channel); ++_iFrags)
 					{
 						_pUniqueInterface = new MetaFragment::Interfaces::Unique (_iFrags->second->acquireInterface());
 
@@ -905,8 +927,8 @@ namespace Ogre
 		delete _pUniqueInterface;
 	}
 	
-	MetaFragmentIterator::MetaFragmentIterator( const PagePrivateNonthreaded * pPage)
-		: _pPage(pPage), _nTileCount(pPage->getManager().options.getTilesPerPage())
+	MetaFragmentIterator::MetaFragmentIterator( const Channel::Ident channel, const PagePrivateNonthreaded * pPage)
+		: _channel(channel), _pPage(pPage), _nTileCount(pPage->getManager().options.getTilesPerPage())
 	{
 		OHT_CR_INIT();
 		process();
@@ -928,8 +950,8 @@ namespace Ogre
 			{
 				_pTile = _pPage->getTerrainTile(_i, _j);
 
-				if (_pTile->hasMetaFrags())
-					for (_iFrags = _pTile->beginFrags(); _iFrags != _pTile->endFrags(); ++_iFrags)
+				if (_pTile->hasMetaFrags(_channel))
+					for (_iFrags = _pTile->beginFrags(_channel); _iFrags != _pTile->endFrags(_channel); ++_iFrags)
 						OHT_CR_RETURN_VOID(CRS_Default);
 
 				_pTile = NULL;

@@ -67,6 +67,9 @@ namespace Ogre
 		/// Retrieve the bounding-box of the ball's sphere
 		virtual AxisAlignedBox getAABB() const;
 
+		/// Computes a spherical intersection reflecting this metaball with the specified bounding-box
+		virtual void intersection(AxisAlignedBox & bbox) const;
+
 		/// Used for serialization
 		virtual MOType getObjectType () const { return MOT_MetaBall; }
 		virtual void write(StreamSerialiser & output) const;

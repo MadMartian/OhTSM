@@ -130,19 +130,6 @@ namespace Ogre
 		static const DimensionType MAX_DIM = 32;
 	}
 
-	/// Type of normals requested during a IsoSurfaceBuilder operation
-	enum ComputeNormalsType
-	{
-		/// Don't generate normals
-		NORMAL_NONE,
-		/// Normals are calculated as a weighted average of face normals.
-		NORMAL_WEIGHTED_AVERAGE,
-		/// Normals are calculated as an average of face normals.
-		NORMAL_AVERAGE,
-		/// Normals are calculated by interpolating the gradient in the data grid.
-		NORMAL_GRADIENT
-	};
-
 	/// Denotes whether a coordinate is flush with a minimal-edge or maximal-edge or neither bounded by the dimensions
 	enum TouchStatus
 	{

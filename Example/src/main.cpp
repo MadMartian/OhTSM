@@ -77,13 +77,13 @@ int WINAPI WinMain ( HINSTANCE hInst, HINSTANCE, LPSTR szCmdLine, int)
 		OverhangTerrainOptions options;
 
 		options.primaryCamera = pCam;
-		options.terrainMaterial = pMat;
 		options.pageSize = 129;
 		options.tileSize = 33;
 		options.cellScale = 50.0;
 		options.heightScale = 8.0;
-		options.maxGeoMipMapLevel = 6;
-		options.maxPixelError = 10;
+		options.channels[TERRAIN_ENTITY_CHANNEL].material = pMat;
+		options.channels[TERRAIN_ENTITY_CHANNEL].maxGeoMipMapLevel = 6;
+		options.channels[TERRAIN_ENTITY_CHANNEL].maxPixelError = 10;
 
 		pScMgr->setOptions(options);
 

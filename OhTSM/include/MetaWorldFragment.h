@@ -57,6 +57,7 @@ MetaFragments for visibility culling (TODO).
 #include "IsoSurfaceSharedTypes.h"
 #include "MetaObject.h"
 #include "Neighbor.h"
+#include "MetaFactory.h"
 
 namespace Ogre
 {
@@ -92,8 +93,6 @@ namespace Ogre
 			/// List of meta-objects that makes-up this fragment's discrete sample voxel grid
 			MetaObjsList _vMetaObjects;
 
-			/// Factory singleton for creating new objects
-			const MetaFactory * _pMetaFactory;
 			/// Surrounding meta fragment neighbors in the scene
 			Core * _vpNeighbors[CountOrthogonalNeighbors];
 
@@ -114,12 +113,15 @@ namespace Ogre
 			Touch3DFlags _enStitches_Requested0;
 
 		public:
+			/// Factory singleton for creating new objects of the associated channel
+			const Voxel::MetaVoxelFactory * const factory;
+
 			/**
-			@param pFactory The meta factory singleton for creating various new objects
+			@param pFactory The meta factory singleton for creating various new objects of the associated channel
 			@param pBlock The 3D voxel grid bound to the meta fragment
 			@param ylevel the Y-level of the meta fragment
 			*/
-			Core(const MetaFactory * pFactory, Voxel::CubeDataRegion * pBlock, const YLevel & ylevel);
+			Core(const Voxel::MetaVoxelFactory * pFactory, Voxel::CubeDataRegion * pBlock, const YLevel & ylevel);
 			~Core();
 
 		public: // Simple accessors
@@ -194,6 +196,8 @@ namespace Ogre
 
 			/// Adds a metaobject to this world fragment, does not update the 3D voxel grid
 			void addMetaObject( MetaObject * const mo );
+			/// Searches for and removes the specified meta-object, returns true if found and removed
+			bool removeMetaObject( const MetaObject * const mo );
 			/// Removes all metaobjects from this world fragment, does not update the 3D voxel grid
 			void clearMetaObjects();
 
@@ -290,9 +294,9 @@ namespace Ogre
 				/// Y-level of the meta-fragment
 				const YLevel & ylevel;
 				/// Meta-fragment's isosurface renderable
-				T_IsoSurfaceRenderable * const surface;
+				T_IsoSurfaceRenderable * const & surface;
 				/// Meta-fragment's attached 3D voxel grid
-				Voxel::CubeDataRegion * const block;
+				Voxel::CubeDataRegion * const & block;
 
 				Basic_base(Basic_base && move)
 					: ylevel(move.ylevel), surface(move.surface), block(move.block), _core(move._core) {}
@@ -406,7 +410,11 @@ namespace Ogre
 				/// @see Core::addMetaObject(...)
 				inline
 				void addMetaObject( MetaObject * const mo ) { _core->addMetaObject(mo); }
-				
+
+				/// @see Core::removeMetaObject(...)
+				inline
+				bool removeMetaObject( const MetaObject * const mo ) { return _core->removeMetaObject(mo); }
+
 				/// @see Core::clearMetaObjects()
 				inline
 				void clearMetaObjects() { _core->clearMetaObjects(); }
@@ -504,8 +512,11 @@ namespace Ogre
 		class _OverhangTerrainPluginExport Container : private Core
 		{
 		public:
-			/// Creates new MetaWorldFragment, as well as IsoSuface and grid as needed.
-			Container(const MetaFactory * pFact, Voxel::CubeDataRegion * pDG, const YLevel yl = YLevel());
+			/// Factory for creating various channel-specific objects
+			const Voxel::MetaVoxelFactory * const factory;
+
+			/// Creates new MetaFragment, as well as IsoSuface and grid as needed.
+			Container(const Voxel::MetaVoxelFactory * pFact, Voxel::CubeDataRegion * pDG, const YLevel yl = YLevel());
 			~Container();
 
 			template< typename INTERFACE >

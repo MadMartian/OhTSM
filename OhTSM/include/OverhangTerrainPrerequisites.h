@@ -69,6 +69,8 @@ namespace Ogre
 		class ColourChannelSet;
 		class FieldAccessor;
 		class GradientField;
+
+		class MetaVoxelFactory;
 	}
 
 	namespace HardwareShadow
@@ -99,7 +101,7 @@ namespace Ogre
 	class MetaObject;
 	class MetaBall;
 	class MetaHeightMap;
-	class MetaFactory;
+	class MetaBaseFactory;
 
 }
 //-----------------------------------------------------------------------

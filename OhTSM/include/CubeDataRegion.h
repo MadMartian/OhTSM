@@ -38,6 +38,7 @@ http://www.gnu.org/copyleft/lesser.txt.
 #include "Util.h"
 
 #include "OverhangTerrainPrerequisites.h"
+#include "OverhangTerrainOptions.h"
 
 #include "CubeDataRegionDescriptor.h"
 #include "FieldAccessor.h"
@@ -45,6 +46,7 @@ http://www.gnu.org/copyleft/lesser.txt.
 #include "ColourChannelSet.h"
 #include "GradientField.h"
 #include "RLE.h"
+#include "DataBase.h"
 
 namespace Ogre
 {
@@ -70,9 +72,14 @@ namespace Ogre
 				RLE::Channel r, g, b, a;
 			} * const colors;
 
+			struct TexCoordChannels
+			{
+				RLE::Channel u, v;
+			} * const texcoords;
+
 			RLE::Channel values;
 
-			CompressedDataBase(const bool bGradField = true, const bool bColorSet = true);
+			CompressedDataBase(const size_t nVRFlags);
 			~CompressedDataBase();
 
 			void operator << (const DataBase & database);
@@ -261,25 +268,25 @@ namespace Ogre
 		class _OverhangTerrainPluginExport CubeDataRegion : private IDataBaseHook
 		{
 		public:
-			CubeDataRegion(const CubeDataRegionDescriptor & dgtmpl, const Vector3 & pos = Vector3::ZERO );
+			const CubeDataRegionDescriptor & meta;
+
+			CubeDataRegion(const size_t nVRFlags, DataBasePool * pPool, const CubeDataRegionDescriptor & dgtmpl, const AxisAlignedBox & bbox = AxisAlignedBox::BOX_NULL );
 			virtual ~CubeDataRegion();
 
 			inline 
-				DimensionType getDimensions() const {return _meta.dimensions; }
+				DimensionType getDimensions() const {return meta.dimensions; }
 			inline 
-				Real getGridScale() const {return _meta.scale; }
-			inline 
-				Vector3 getPosition() const {return _pos;}
+				Real getGridScale() const {return meta.scale; }
 
 			inline 
-				const IsoFixVec3* getVertices() const {return _meta.getVertices(); }
+				const IsoFixVec3* getVertices() const {return meta.getVertices(); }
 
 			inline
-				VoxelIndex getGridPointIndex(const size_t x, const size_t y, const size_t z) const { return _meta.getGridPointIndex(x, y, z); }
+				VoxelIndex getGridPointIndex(const size_t x, const size_t y, const size_t z) const { return meta.getGridPointIndex(x, y, z); }
 
 			const AxisAlignedBox& getBoundingBox() const {return _bbox; }
 			inline 
-				const AxisAlignedBox & getBoxSize() const { return _meta.getBoxSize(); }
+				const AxisAlignedBox & getBoxSize() const { return meta.getBoxSize(); }
 			/** Maps an axis aligned box to the grid points inside it.
 			@remarks
 			This function modifies the values of x0, y0, z0, x1, y1, and z1.
@@ -294,8 +301,9 @@ namespace Ogre
 			If the function returns false, the contents of x0, y0, z0, x1, y1, and z1 are undefined. */
 			bool mapRegion(const AxisAlignedBox& aabb, WorldCellCoords & gp0, WorldCellCoords & gpN) const;
 
-			inline bool hasGradient() const {return _meta.hasGradient(); }
-			inline bool hasColours() const {return _meta.hasColours(); }
+			bool hasGradient() const {return (_nVRFlags & VRF_Gradient) != 0; }
+			bool hasColours() const {return (_nVRFlags & VRF_Colours) != 0; }
+			bool hasTexCoords() const { return (_nVRFlags & VRF_TexCoords) != 0; }
 
 			virtual StreamSerialiser & operator >> (StreamSerialiser & output) const;
 			virtual StreamSerialiser & operator << (StreamSerialiser & input);
@@ -303,13 +311,11 @@ namespace Ogre
 		private:
 			mutable boost::recursive_mutex _mutex;
 
-			const CubeDataRegionDescriptor & _meta;
-			mutable DataBaseFactory & _factory;
+			size_t _nVRFlags;
+
+			mutable DataBasePool * _pPool;
 
 			CompressedDataBase * _compression;
-
-			/// Position of this Grid.
-			Vector3 _pos;
 
 			/// Bounding box of the grid.
 			AxisAlignedBox _bbox;

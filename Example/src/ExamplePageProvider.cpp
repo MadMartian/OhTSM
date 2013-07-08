@@ -34,7 +34,7 @@ bool ExamplePageProvider::loadPage( const int16 x, const int16 y, PageInitParams
 	return true;
 }
 
-bool ExamplePageProvider::savePage( const Real * pfHM, const IOverhangTerrainPage * pPage, const int16 x, const int16 y, const size_t nPageAxis, const unsigned long nTotalPageSize )
+bool ExamplePageProvider::savePage( const IOverhangTerrainPage * pPage, const int16 x, const int16 y, const size_t nPageAxis, const unsigned long nTotalPageSize )
 {
 	try
 	{

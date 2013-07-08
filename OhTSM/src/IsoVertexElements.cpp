@@ -33,17 +33,16 @@ http://www.gnu.org/copyleft/lesser.txt.
 
 namespace Ogre
 {
-	IsoVertexElements::IsoVertexElements( const size_t nNumElements, const char nSurfaceFlags )
+	IsoVertexElements::IsoVertexElements( const size_t nNumElements )
 		: 
 		count(nNumElements),
 
 		indices( new HWVertexIndex[nNumElements] ),
 		positions( new IsoFixVec3[nNumElements] ),
 
-		normals( (nSurfaceFlags & GEN_NORMALS) ? new Vector3[nNumElements] : NULL ),
-		colours( (nSurfaceFlags & GEN_VERTEX_COLOURS) ? new ColourValue[nNumElements] : NULL ),
-		texcoords( (nSurfaceFlags & GEN_TEX_COORDS) ? new TexCoords[nNumElements] : NULL ),
-		surfaceFlags(nSurfaceFlags)
+		normals( new Vector3[nNumElements] ),
+		colours( new ColourValue[nNumElements] ),
+		texcoords( new TexCoords[nNumElements] )
 	{
 	}
 

@@ -35,6 +35,7 @@ http://www.gnu.org/copyleft/lesser.txt.
 #include "OverhangTerrainPagedWorldSection.h"
 
 #include "MetaFactory.h"
+#include "ChannelIndex.h"
 
 #include <OgreWorkQueue.h>
 #include <OgreStreamSerialiser.h>
@@ -105,6 +106,9 @@ namespace Ogre
 				
 				/// Applies to the JTT_SetMaterial task type
 				MaterialPtr material;
+
+				/// Applies to the JTT_SetMaterial task type
+				Channel::Ident channel;
 			};
 			typedef std::queue< JoinTask > JoinTaskQueue;
 
@@ -193,8 +197,8 @@ namespace Ogre
 			/// Frees-up and nullifies a structure designed to hold data required for loading this slot's terrain page
 			void freeLoadData ();
 
-			/// Sets the material of the page or queues a request to do so if the slot is busy
-			void setMaterial (MaterialPtr pMaterial);
+			/// Sets the material of the page-wide channel or queues a request to do so if the slot is busy
+			void setMaterial (const Channel::Ident channel, MaterialPtr pMaterial);
 			
 			/// Deletes the page and marks the slot as TSS_Destroy or queues a request to do so if the slot is busy
 			void destroySlot ();
@@ -231,10 +235,10 @@ namespace Ogre
 		/// Origin in the world for this group of terrain pages
 		inline const Vector3 & getOrigin() const { return _ptOrigin; }
 
-		/// Sets the material used on all terrain renderables
-		void setMaterial (const MaterialPtr & m);
-		/// Retrieves the material used on all terrain renderables
-		inline const MaterialPtr & getMaterial() const { return _pMaterial; }
+		/// Sets the material used on all terrain renderables of the specified channel
+		void setMaterial (const Channel::Ident channel, const MaterialPtr & m);
+		/// Retrieves the material used on all terrain renderables of the specified channel
+		inline const MaterialPtr & getMaterial(const Channel::Ident channel) const { return _chanprops[channel].material; }
 
 		/** Concurrently add a metaball to the scene.
 		@remarks A background request is initiated for adding the metaball to the scene and updating the respective voxel grids.
@@ -261,10 +265,10 @@ namespace Ogre
 		/** Test for intersection of a given ray with any terrain in the group. If the ray hits a terrain, the point of 
 			intersection and terrain instance is returned.
 		 @param ray The ray to test for intersection
-		 @param distanceLimit The distance from the ray origin at which we will stop looking or zero for no limit
+		 @param params Parameters influencing the ray query including the distance from the ray origin at which we will stop looking or zero for no limit
 		 @return A result structure which contains whether the ray hit a terrain and if so, where.
 		 @remarks This must be called from the main thread */
-		RayResult rayIntersects(Ray ray, Real distanceLimit = 0) const; 
+		RayResult rayIntersects(Ray ray, const OverhangTerrainManager::RayQueryParams & params) const;
 
 		/** Queues a background request for unloading terrain at the specified coordinates
 		@remarks Attempts to unload the terrain page at the specified slot if it is permitted to.
@@ -326,8 +330,19 @@ namespace Ogre
 			DestroyAll = 5
 		};
 
-		/// The main factory singleton for creating objects
-		MetaFactory _factory;
+		/// The main factory singleton for creating top-level objects
+		MetaBaseFactory _factory;
+
+		/// Describes all channels used in the group
+		Channel::Descriptor _descchan;
+
+		/// Tracks certain channel-specific properties
+		struct ChannelProperties
+		{
+			MaterialPtr material;
+		};
+		/// Channel-specific properties
+		Channel::Index< ChannelProperties > _chanprops;
 
 		/// Factory method for creating PageSection instances
 		PageSection * createPage ();
@@ -485,8 +500,6 @@ namespace Ogre
 		uint16 _nWorkQChannel;
 		/// Center position of the terrain group and its terrains relative to
 		Vector3 _ptOrigin;
-		/// The material assigned to all isosurface renderables in the group
-		MaterialPtr _pMaterial;
 		/// Name of the resource group where terrain pages are stored
 		String _sResourceGroup;
 		/// Pointer to an OGRE object used for paging
@@ -504,9 +517,6 @@ namespace Ogre
 		static const uint16 CHUNK_VERSION;
 		static const uint32 CHUNK_PAGE_ID;
 		static const uint16 CHUNK_PAGE_VERSION;
-
-		/// Sets-up the configuration for creating a new meta-factory
-		static MetaFactory::Config createMetaFactoryConfig();
 
 		/// Sets the terrain paged world section object pointer
 		inline void setOverhangTerrainPagedWorldSection (const OverhangTerrainPagedWorldSection * pws)

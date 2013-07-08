@@ -39,10 +39,10 @@ namespace Ogre
 {
 	namespace Voxel
 	{
-		CubeDataRegion::CubeDataRegion( const CubeDataRegionDescriptor & dgtmpl, const Vector3 & pos /*= Vector3::ZERO*/)
-		  : _meta(dgtmpl), _factory(dgtmpl.factoryDB),
-			_pos(pos), _bbox(createBoundingBox(dgtmpl, pos)),
-			_compression(new CompressedDataBase(_meta.hasGradient(), _meta.hasColours()))
+		CubeDataRegion::CubeDataRegion( const size_t nVRFlags, DataBasePool * pPool, const CubeDataRegionDescriptor & dgtmpl, const AxisAlignedBox & bbox /* = AxisAlignedBox::BOX_NULL */)
+		  : meta(dgtmpl), _nVRFlags(nVRFlags), _pPool(pPool),
+			_bbox(bbox),
+			_compression(new CompressedDataBase(nVRFlags))
 		{
 		}
 
@@ -55,8 +55,8 @@ namespace Ogre
 		bool CubeDataRegion::mapRegion( const AxisAlignedBox& aabb, WorldCellCoords & gp0, WorldCellCoords & gpN ) const
 		{
 			Vector3
-				v0 = _bbox.getMinimum() - _meta.scale,
-				vN = _bbox.getMaximum() + _meta.scale;
+				v0 = _bbox.getMinimum() - meta.scale,
+				vN = _bbox.getMaximum() + meta.scale;
 
 			// x0
 			if (aabb.getMinimum().x <= v0.x)
@@ -65,7 +65,7 @@ namespace Ogre
 			if (aabb.getMinimum().x > vN.x)
 				return false;
 			else
-				gp0.i = signed int(Math::Ceil((aabb.getMinimum().x - _bbox.getMinimum().x) / _meta.scale));
+				gp0.i = signed int(Math::Ceil((aabb.getMinimum().x - _bbox.getMinimum().x) / meta.scale));
 
 			// gp0.j
 			if (aabb.getMinimum().y <= v0.y)
@@ -74,7 +74,7 @@ namespace Ogre
 			if (aabb.getMinimum().y > vN.y)
 				return false;
 			else
-				gp0.j = signed int(Math::Ceil((aabb.getMinimum().y - _bbox.getMinimum().y) / _meta.scale));
+				gp0.j = signed int(Math::Ceil((aabb.getMinimum().y - _bbox.getMinimum().y) / meta.scale));
 
 			// gp0.k
 			if (aabb.getMinimum().z <= v0.z)
@@ -83,34 +83,34 @@ namespace Ogre
 			if (aabb.getMinimum().z > vN.z)
 				return false;
 			else
-				gp0.k = signed int(Math::Ceil((aabb.getMinimum().z - _bbox.getMinimum().z) / _meta.scale));
+				gp0.k = signed int(Math::Ceil((aabb.getMinimum().z - _bbox.getMinimum().z) / meta.scale));
 
 			// gpN.i
 			if (aabb.getMaximum().x < v0.x)
 				return false;
 			else
 			if (aabb.getMaximum().x >= vN.x)
-				gpN.i = _meta.dimensions+1;
+				gpN.i = meta.dimensions+1;
 			else
-				gpN.i = signed int(Math::Floor((aabb.getMaximum().x - _bbox.getMinimum().x) / _meta.scale));
+				gpN.i = signed int(Math::Floor((aabb.getMaximum().x - _bbox.getMinimum().x) / meta.scale));
 
 			// gpN.j
 			if (aabb.getMaximum().y < v0.y)
 				return false;
 			else
 			if (aabb.getMaximum().y >= vN.y)
-				gpN.j = _meta.dimensions+1;
+				gpN.j = meta.dimensions+1;
 			else
-				gpN.j = signed int(Math::Floor((aabb.getMaximum().y - _bbox.getMinimum().y) / _meta.scale));
+				gpN.j = signed int(Math::Floor((aabb.getMaximum().y - _bbox.getMinimum().y) / meta.scale));
 
 			// gpN.k
 			if (aabb.getMaximum().z < v0.z)
 				return false;
 			else
 			if (aabb.getMaximum().z >= vN.z)
-				gpN.k = _meta.dimensions+1;
+				gpN.k = meta.dimensions+1;
 			else
-				gpN.k = signed int(Math::Floor((aabb.getMaximum().z - _bbox.getMinimum().z) / _meta.scale));
+				gpN.k = signed int(Math::Floor((aabb.getMaximum().z - _bbox.getMinimum().z) / meta.scale));
 
 			return true;
 		}
@@ -119,7 +119,6 @@ namespace Ogre
 		{
 			const_CompressedDataAccessor data = clease();
 
-			output.write(&_pos);
 			output.write(&_bbox);
 			data >> output;
 
@@ -129,7 +128,6 @@ namespace Ogre
 		{
 			CompressedDataAccessor data = clease();
 
-			input.read(&_pos);
 			input.read(&_bbox);
 			data << input;
 
@@ -138,30 +136,30 @@ namespace Ogre
 
 		DataAccessor CubeDataRegion::lease()
 		{
-			DataBase * pDataBucket = _factory.lease();
+			DataBase * pDataBucket = _pPool->lease();
 			populate(pDataBucket);
-			return DataAccessor (_mutex, pDataBucket, this, _meta);
+			return DataAccessor (_mutex, pDataBucket, this, meta);
 		}
 
 		const_DataAccessor CubeDataRegion::lease() const
 		{
-			DataBase * pDataBucket = _factory.lease();
+			DataBase * pDataBucket = _pPool->lease();
 			populate(pDataBucket);
-			return const_DataAccessor (_mutex, pDataBucket, this, _meta);
+			return const_DataAccessor (_mutex, pDataBucket, this, meta);
 		}
 
 		DataAccessor * CubeDataRegion::lease_p()
 		{
-			DataBase * pDataBucket = _factory.lease();
+			DataBase * pDataBucket = _pPool->lease();
 			populate(pDataBucket);
-			return new DataAccessor (_mutex, pDataBucket, this, _meta);
+			return new DataAccessor (_mutex, pDataBucket, this, meta);
 		}
 
 		const_DataAccessor * CubeDataRegion::lease_p() const
 		{
-			DataBase * pDataBucket = _factory.lease();
+			DataBase * pDataBucket = _pPool->lease();
 			populate(pDataBucket);
-			return new const_DataAccessor (_mutex, pDataBucket, this, _meta);
+			return new const_DataAccessor (_mutex, pDataBucket, this, meta);
 		}
 
 		CompressedDataAccessor CubeDataRegion::clease()
@@ -181,7 +179,7 @@ namespace Ogre
 		}
 		void CubeDataRegion::released( const DataBase * pDataBucket ) const
 		{
-			_factory.retire(pDataBucket);
+			_pPool->retire(pDataBucket);
 		}
 
 		void CubeDataRegion::populate( DataBase * pDataBucket ) const
@@ -284,8 +282,10 @@ namespace Ogre
 		: template_DataAccessor(static_cast< template_DataAccessor && > (move)) 
 		{}
 
-		CompressedDataBase::CompressedDataBase( const bool bGradField /*= true*/, const bool bColorSet /*= true*/ ) 
-		: gradfield(bGradField ? new GradientChannels : NULL), colors(bColorSet ? new ColorChannels : NULL)
+		CompressedDataBase::CompressedDataBase( const size_t nVRFlags )
+		:	gradfield(nVRFlags & VRF_Gradient ? new GradientChannels : NULL),
+			colors(nVRFlags & VRF_Colours ? new ColorChannels : NULL),
+			texcoords(nVRFlags & VRF_TexCoords ? new TexCoordChannels : NULL)
 		{
 
 		}
@@ -294,6 +294,7 @@ namespace Ogre
 		{
 			delete gradfield;
 			delete colors;
+			delete texcoords;
 		}
 
 		void CompressedDataBase::operator<<( const DataBase & database )
@@ -314,6 +315,12 @@ namespace Ogre
 				colors->b.compress(database.count, reinterpret_cast< unsigned char * > (database.blue));
 				colors->a.compress(database.count, reinterpret_cast< unsigned char * > (database.alpha));
 			}
+
+			if (texcoords != NULL)
+			{
+				texcoords->u.compress(database.count, reinterpret_cast< unsigned char * > (database.tx));
+				texcoords->v.compress(database.count, reinterpret_cast< unsigned char * > (database.ty));
+			}
 		}
 
 		void CompressedDataBase::operator>>( DataBase & database ) const
@@ -333,6 +340,12 @@ namespace Ogre
 				colors->g.decompress(database.count, reinterpret_cast< unsigned char * > (database.green));
 				colors->b.decompress(database.count, reinterpret_cast< unsigned char * > (database.blue));
 				colors->a.decompress(database.count, reinterpret_cast< unsigned char * > (database.alpha));
+			}
+
+			if (texcoords != NULL)
+			{
+				texcoords->u.decompress(database.count, reinterpret_cast< unsigned char * > (database.tx));
+				texcoords->v.decompress(database.count, reinterpret_cast< unsigned char * > (database.ty));
 			}
 		}
 
@@ -362,6 +375,12 @@ namespace Ogre
 				_compression->colors->a >> outs;
 			}
 
+			if (_compression->texcoords != NULL)
+			{
+				_compression->texcoords->u >> outs;
+				_compression->texcoords->v >> outs;
+			}
+
 			return outs;
 		}
 
@@ -389,6 +408,12 @@ namespace Ogre
 				_compression->colors->g << ins;
 				_compression->colors->b << ins;
 				_compression->colors->a << ins;
+			}
+
+			if (_compression->texcoords != NULL)
+			{
+				_compression->texcoords->u << ins;
+				_compression->texcoords->v << ins;
 			}
 
 			return ins;

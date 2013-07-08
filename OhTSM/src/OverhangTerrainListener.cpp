@@ -72,6 +72,7 @@ namespace Ogre
 	void OverhangTerrainRenderable::setMaterial( MaterialPtr pMat ) 
 	{ 
 		oht_assert_threadmodel(ThrMdl_Main);
+		OgreAssert(_pBuilder != NULL, "Builder access was NULL");
 		_pBuilder->setMaterial(pMat); 
 	}
 

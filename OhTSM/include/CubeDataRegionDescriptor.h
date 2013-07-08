@@ -38,67 +38,12 @@ http://www.gnu.org/copyleft/lesser.txt.
 #include "Neighbor.h"
 
 #include "IsoSurfaceSharedTypes.h"
+#include "OverhangTerrainOptions.h"
 
 namespace Ogre
 {
 	namespace Voxel 
 	{
-		/** Data container for a cubical region of voxels including voxel values, gradient, and colours */
-		class _OverhangTerrainPluginExport DataBase
-		{
-		private:
-			DataBase (const DataBase &);
-
-		public:
-			const size_t count;
-			FieldStrength * values;
-			signed char * dx, *dy, *dz;
-			unsigned char * red, * green, * blue, * alpha;
-
-			DataBase(const size_t nCount);
-			virtual ~DataBase();
-		};
-
-		/** A memory pool pattern for DataBase instances to eliminate allocation/deallocation 
-			and improve performance */
-		class _OverhangTerrainPluginExport DataBaseFactory
-		{
-		private:
-			typedef std::list< DataBase * > DataBaseList;
-
-			mutable boost::mutex _mutex;
-
-			/// How much to grow the pool each iteration and the voxel count per DataBase instance
-			const size_t _nGrowBy, _nBucketElementCount;
-			/// Unused and checked-out pools
-			DataBaseList _pool, _leased;
-
-			/// Expands the pool by an amount
-			void growBy(const size_t nAmt);
-
-			// Copying a factory is nonsensical
-			DataBaseFactory(const DataBaseFactory &);
-
-		public:
-			/** Exception class used to enforce consistency, thrown from destructor when objects are still
-				checked-out of the pool and thrown during retire if the specified instance was not previously
-				checked-out. */
-			class LeaseEx : public std::exception 
-			{
-			public:
-				LeaseEx(const char * szMsg);
-			};
-
-			DataBaseFactory(const size_t nBucketElementCount, const size_t nInitialPoolCount = 4, const size_t nGrowBy = 1);
-
-			/// Check-out an instance
-			DataBase * lease ();
-			/// Check-in an instance
-			void retire (const DataBase * pDataBase);
-
-			~DataBaseFactory();
-		};
-
 		/** Singleton pattern meta-information for a cubical region of voxels in the scene */
 		class _OverhangTerrainPluginExport CubeDataRegionDescriptor
 		{
@@ -110,15 +55,6 @@ namespace Ogre
 				size_t mz, my, mx;
 			} coordsIndexTx, cellIndexTx;
 
-			/// Flags describing what data is stored in the data grid.
-			enum GridFlags
-			{
-				/// The data grid stores gradient vectors.
-				HAS_GRADIENT = 0x01,
-				/// The data grid stores colour values.
-				HAS_COLOURS = 0x02
-			};
-
 			/// Height, width, and depth of the grid
 			const DimensionType dimensions;
 			/// Total voxels and cells per region, total voxels and cells on a side of a region
@@ -126,14 +62,11 @@ namespace Ogre
 			/// The scale of grid cells; this influences the position of grid vertices.
 			const Real scale;
 
-			mutable DataBaseFactory factoryDB;
-
 			/** 
 			@param nVertexDimensions The number of voxels in one direction, nTileSize^3 defines the total number of voxels per cube
 			@param gridScale World-size of a single cell, defines the world-size of a cube
-			@param nFlags OR'd GridFlags
 			*/
-			CubeDataRegionDescriptor(const DimensionType nVertexDimensions, const Real gridScale, const int nFlags);
+			CubeDataRegionDescriptor(const DimensionType nVertexDimensions, const Real gridScale);
 
 			/** Computes whether a coordinate is flush with a minimal or maximal edge as bounded by the dimensions
 			or neither.  The result is a pair of bit flags indicating the result that also conveniently double
@@ -318,12 +251,7 @@ namespace Ogre
 				return gpc;
 			}
 			/// Return the world size of the cube region
-			const AxisAlignedBox & getBoxSize() const {return mBoxSize;}
-
-			/// Returns true if the grid stores gradient vectors.Z
-			bool hasGradient() const {return (_flags & HAS_GRADIENT) != 0; }
-			/// Returns true if the grid stores colour values.
-			bool hasColours() const {return (_flags & HAS_COLOURS) != 0; }
+			const AxisAlignedBox & getBoxSize() const {return _bboxSize;}
 
 			~CubeDataRegionDescriptor();
 
@@ -336,10 +264,8 @@ namespace Ogre
 			/// The base-2 logarithmic order of dimension
 			unsigned char _nDimOrder2;
 
-			/// Flags describing what data is stored in the data grid (see CubeDataRegion::GridFlags).
-			int _flags;
-
-			AxisAlignedBox mBoxSize;
+			/// Size of the bounding region for the descriptor
+			AxisAlignedBox _bboxSize;
 
 			/// Convenience x^2 (square) function
 			inline static size_t SQ(const int n) { return static_cast< size_t > (n*n); }

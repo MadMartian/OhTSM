@@ -17,14 +17,33 @@ namespace Ogre
 		stream.read(&alignment);
 		stream.read(&pageSize);
 		stream.read(&tileSize);
-		stream.read(&maxGeoMipMapLevel);
 		stream.read(&cellScale);
 		stream.read(&heightScale);
-		stream.read(&maxPixelError);
-		stream.read(&coloured);
-		stream.read(&terrainMaterial);
 		stream.read(&materialPerTile);
 		stream.read(&autoSave);
+
+		uint16 nChannelCount;
+
+		stream.read(&nChannelCount);
+		channels = Channel::Index< ChannelOptions > (channels.descriptor, [&stream] (const Channel::Ident channel) -> ChannelOptions *
+		{
+			unsigned char cEnumTemp;
+			ChannelOptions * pOpts = new ChannelOptions;
+			stream.read(&pOpts->flipNormals);
+			String sMatName, sMatGroup;
+			stream.read(&sMatGroup);
+			stream.read(&sMatName);
+			pOpts->material = MaterialManager::getSingleton().load(sMatName, sMatGroup);
+			stream.read(&cEnumTemp);
+			pOpts->normals = static_cast< NormalsType > (cEnumTemp);
+			stream.read(&pOpts->transitionCellWidthRatio);
+			stream.read(&cEnumTemp);
+			pOpts->voxelRegionFlags = static_cast< OverhangTerrainVoxelRegionFlags > (cEnumTemp);
+			stream.read(&pOpts->maxGeoMipMapLevel);
+			stream.read(&pOpts->maxPixelError);
+
+			return pOpts;
+		});
 
 		return stream;
 	}
@@ -35,15 +54,31 @@ namespace Ogre
 		stream.write(&alignment);
 		stream.write(&pageSize);
 		stream.write(&tileSize);
-		stream.write(&maxGeoMipMapLevel);
 		stream.write(&cellScale);
 		stream.write(&heightScale);
-		stream.write(&maxPixelError);
-		stream.write(&coloured);
-		stream.write(&terrainMaterial);
 		stream.write(&materialPerTile);
 		stream.write(&autoSave);
 		stream.writeChunkEnd(CHUNK_ID);
+
+		stream.write(&channels.descriptor.count);
+		for (Channel::Descriptor::iterator i = channels.descriptor.begin(); i != channels.descriptor.end(); ++i)
+		{
+			unsigned char cEnumTemp;
+			const ChannelOptions & opts = channels[*i];
+			stream.write(&opts.flipNormals);
+			const String
+				sMatName = opts.material->getName(),
+				sMatGroup = opts.material->getGroup();
+			stream.write(&sMatGroup);
+			stream.write(&sMatName);
+			cEnumTemp = opts.normals;
+			stream.write(&cEnumTemp);
+			stream.write(&opts.transitionCellWidthRatio);
+			cEnumTemp = opts.voxelRegionFlags;
+			stream.write(&cEnumTemp);
+			stream.write(&opts.maxGeoMipMapLevel);
+			stream.write(&opts.maxPixelError);
+		}
 
 		return stream;
 	}
@@ -51,17 +86,23 @@ namespace Ogre
 	OverhangTerrainOptions::OverhangTerrainOptions() 
 	:	pageSize(0),
 		tileSize(0),
-		maxGeoMipMapLevel(3),
 		alignment(ALIGN_X_Z),
 		cellScale(1.0f),
 		heightScale(1.0f),
-		maxPixelError(8.0f),
-		coloured(true),
 		primaryCamera(NULL),
 		autoSave(true),
-		materialPerTile(true)
+		materialPerTile(true),
+		channels(Channel::Descriptor(1))
 	{
-		terrainMaterial.setNull();
+	}
+
+
+	OverhangTerrainOptions::ChannelOptions::ChannelOptions()
+	:	materialPerTile(false),
+		normals(NT_Gradient),
+		flipNormals(false),
+		transitionCellWidthRatio(0.5f)
+	{
 	}
 
 }

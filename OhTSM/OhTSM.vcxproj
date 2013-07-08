@@ -61,7 +61,6 @@
       <MinimalRebuild>true</MinimalRebuild>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <AdditionalOptions>-Zm512 %(AdditionalOptions)</AdditionalOptions>
-      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -113,8 +112,10 @@
     </ProjectReference>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="src\ChannelIndex.cpp" />
     <ClCompile Include="src\ColourChannelSet.cpp" />
     <ClCompile Include="src\CubeDataRegion.cpp" />
+    <ClCompile Include="src\DataBase.cpp" />
     <ClCompile Include="src\DebugTools.cpp" />
     <ClCompile Include="src\DynamicRenderable.cpp" />
     <ClCompile Include="src\GradientField.cpp" />
@@ -156,8 +157,10 @@
     <ClCompile Include="src\FieldAccessor.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\ChannelIndex.h" />
     <ClInclude Include="include\ColourChannelSet.h" />
     <ClInclude Include="include\CubeDataRegion.h" />
+    <ClInclude Include="include\DataBase.h" />
     <ClInclude Include="include\DebugTools.h" />
     <ClInclude Include="include\DynamicRenderable.h" />
     <ClInclude Include="include\GradientField.h" />

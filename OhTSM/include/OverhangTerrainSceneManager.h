@@ -120,11 +120,6 @@ namespace Ogre
 		// Attaches the specified page's scene node to the scene manager, called by the paging system
 		virtual void attachPage (PageSection * page);
 
-		/// Get a pointer to the material being used for the terrain
-		MaterialPtr& getTerrainMaterial(void);
-
-		/// Sets the terrain material being used for terrain cascading the changes to all pages
-		void setTerrainMaterial(const MaterialPtr & pMat);
 		/// Get the SceneNode under which all terrain nodes are attached.
 		SceneNode* getTerrainRootNode(void) const { return _pRoot; }
 		/** Overridden from SceneManager */

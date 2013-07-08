@@ -57,9 +57,10 @@ namespace Ogre
 	) 
 	:	OverhangTerrainManager(sm->getOptions(), sm),
 		_ptOrigin(Vector3::ZERO), 
-		_pMaterial(NULL), 
+		_descchan(sm->getOptions().channels.descriptor),
 		_sResourceGroup(sResourceGroup),
-		_factory(sm->getOptions(), pManRsrcLoader, createMetaFactoryConfig())
+		_factory(sm->getOptions(), pManRsrcLoader),
+		_chanprops(sm->getOptions().channels.descriptor)
 	{
 		WorkQueue * wq = Root::getSingleton().getWorkQueue();
 		_nWorkQChannel = wq->getChannel("Ogre/OverhangTerrainGroup");
@@ -73,7 +74,9 @@ namespace Ogre
 		_pxi = static_cast< int16 > (vi.x);
 		_pyi = static_cast< int16 > (vi.y);
 
-		setMaterial(sm->getTerrainMaterial());
+		const Channel::Index< OverhangTerrainOptions::ChannelOptions > & channels = sm->getOptions().channels;
+		for (Channel::Index< OverhangTerrainOptions::ChannelOptions >::const_iterator i = channels.begin(); i != channels.end(); ++i)
+			setMaterial(i->channel, i->value->material);
 	}
 
 	OverhangTerrainGroup::~OverhangTerrainGroup()
@@ -89,7 +92,7 @@ namespace Ogre
 
 	PageSection * OverhangTerrainGroup::createPage()
 	{
-		return OGRE_NEW PageSection(this, &_factory);
+		return OGRE_NEW PageSection(this, &_factory, _descchan);
 	}
 
 	OverhangTerrainGroup::TerrainSlot* OverhangTerrainGroup::getTerrainSlot(const int16 x, const int16 y, bool createIfMissing)
@@ -295,8 +298,9 @@ namespace Ogre
 		if (_pPageProvider != NULL)
 			_pPageProvider->unloadPage(slot->x, slot->y);
 
-		for (MetaFragmentIterator i = slot->instance->iterateMetaFrags(); i; ++i)
-			respdata.dispose->push_back(i->acquireBasicInterface().surface);
+		for (Channel::Descriptor::iterator j = _descchan.begin(); j != _descchan.end(); ++j)
+			for (MetaFragmentIterator i = slot->instance->iterateMetaFrags(*j); i; ++i)
+				respdata.dispose->push_back(i->acquireBasicInterface().surface);
 	}
 
 	void OverhangTerrainGroup::unloadTerrain_response( TerrainSlot * pSlot, UnloadPageResponseData &data )
@@ -506,7 +510,7 @@ namespace Ogre
 		bool bSavedPage = false;
 
 		if (_pPageProvider != NULL)
-			bSavedPage = _pPageProvider->savePage(pPage->getHeightMap(), pPage, pSlot->x, pSlot->y, options.pageSize, nTotalPageSize);
+			bSavedPage = _pPageProvider->savePage(pPage, pSlot->x, pSlot->y, options.pageSize, nTotalPageSize);
 
 		// If the page provider doesn't take-over full control of saving pages then we will perform the default save operation regardless of the
 		// actual state of the page provider
@@ -517,9 +521,6 @@ namespace Ogre
 				StreamSerialiser out (pout);
 
 				out.writeChunkBegin(CHUNK_PAGE_ID, CHUNK_PAGE_VERSION);
-				out.write(pPage->getHeightMap(), nTotalPageSize);
-				// TODO: Implement commented code
-				//out.write(pPage->generateColourMap(), nTotalPageSize)
 				const bool bHasPage = true;
 				out.write (&bHasPage);
 				*pPage >> out;
@@ -561,8 +562,9 @@ namespace Ogre
 		{
 			pSceneNode = getSceneManager()->createSceneNode(name);
 		}
-		if (!_pMaterial.isNull())
-			page->setMaterial(_pMaterial);
+		for (Channel::Index< ChannelProperties >::const_iterator i = _chanprops.begin(); i != _chanprops.end(); ++i)
+			if (!i->value->material.isNull())
+				page->setMaterial(i->channel, i->value->material);
 
 		page->initialise(pSceneNode);
 	}
@@ -652,17 +654,16 @@ namespace Ogre
 		}
 
 	}
-	void OverhangTerrainGroup::setMaterial(const MaterialPtr & m)
+	void OverhangTerrainGroup::setMaterial(const Channel::Ident channel, const MaterialPtr & m)
 	{
-		if (m != _pMaterial)
+		if (m != _chanprops[channel].material)
 		{
-			_pMaterial = m;
+			_chanprops[channel].material = m;
 			for (TerrainSlotMap::iterator i = _slots.begin(); i != _slots.end(); ++i)
 			{
-				i->second->setMaterial(m);
+				i->second->setMaterial(channel, m);
 			}
 		}
-
 	}
 
 	//-------------------------------------------------------------------------
@@ -787,7 +788,7 @@ namespace Ogre
 		return v += _ptOrigin;
 	}
 
-	OverhangTerrainManager::RayResult OverhangTerrainGroup::rayIntersects( Ray ray, Real nDistLimit /*= 0*/ ) const
+	OverhangTerrainManager::RayResult OverhangTerrainGroup::rayIntersects( Ray ray, const OverhangTerrainManager::RayQueryParams & params ) const
 	{
 		int16 nCurrPageY, nCurrPageX;
 
@@ -893,9 +894,9 @@ namespace Ogre
 					nCurrPageY += nDirY;
 					vWalkPage.y -= 1.0f;
 				}
-				if (nDistLimit)
+				if (params.limit)
 				{
-					if (ray.getOrigin().distance(computeTerrainSlotPosition(nCurrPageX, nCurrPageY)) > nDistLimit)
+					if (ray.getOrigin().distance(computeTerrainSlotPosition(nCurrPageX, nCurrPageY)) > params.limit)
 					{
 						bSearching = false;
 						break;
@@ -913,7 +914,7 @@ namespace Ogre
 					"\t[" << pSlot->x << "x" << pSlot->y << "], " <<
 					"bbox=" << pSlot->instance->getBoundingBox()
 				);
-				if (pSlot->instance->rayIntersects(result, ray, nDistLimit))
+				if (pSlot->instance->rayIntersects(result, ray, params))
 				{
 					bSearching = false;
 					break;
@@ -977,14 +978,6 @@ namespace Ogre
 			);
 		}
 #endif
-	}
-
-	MetaFactory::Config OverhangTerrainGroup::createMetaFactoryConfig()
-	{
-		MetaFactory::Config config;
-
-		config.dataGridFlags = IsoVertexElements::GEN_NORMALS | IsoVertexElements::GEN_TEX_COORDS;
-		return config;
 	}
 
 	Ogre::PageID OverhangTerrainGroup::calculatePageID( const int16 x, const int16 y ) const
@@ -1214,21 +1207,22 @@ namespace Ogre
 				destroy();
 				break;
 			case JoinTask::JTT_SetMaterial:
-				instance->setMaterial(task.material);
+				instance->setMaterial(task.channel, task.material);
 				break;
 			}
 		}
 	}
 
-	void OverhangTerrainGroup::TerrainSlot::setMaterial( MaterialPtr pMaterial )
+	void OverhangTerrainGroup::TerrainSlot::setMaterial( const Channel::Ident channel, MaterialPtr pMaterial )
 	{
 		if (_enState == TSS_Neutral)
-			instance->setMaterial(pMaterial);
+			instance->setMaterial(channel, pMaterial);
 		else
 		{
 			JoinTask task;
 			task.type = JoinTask::JTT_SetMaterial;
 			task.material = pMaterial;
+			task.channel = channel;
 			_qJoinTasks.push(task);
 		}
 	}

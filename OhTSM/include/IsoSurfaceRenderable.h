@@ -91,9 +91,14 @@ namespace Ogre
 		virtual Real getSquaredViewDepth(const Camera* cam) const { return mParentNode->getSquaredViewDepth(cam); }
 
 		/// Populate the hardware buffers concurrently from a recently completed IsoSurfaceBuilder execution
-		void populateBuffers( const IsoSurfaceBuilder * pBuilder, HardwareShadow::HardwareIsoVertexShadow::ConsumerLock::QueueAccess & queue );
-		/// Populate the hardware buffers synchronously from a recently completed IsoSurfaceBuilder execution
-		void directlyPopulateBuffers( const IsoSurfaceBuilder * pBuilder, HardwareShadow::LOD * pResolution, const Touch3DFlags enStitches, const size_t nNewVertexCount, const size_t nIndexCount );
+		void populateBuffers( HardwareShadow::HardwareIsoVertexShadow::ConsumerLock::QueueAccess & queue );
+		/** Populate the hardware buffers synchronously from a recently completed IsoSurfaceBuilder execution
+		@param pVtxElems The buffer containing vertex information supplied by the IsoSurfaceBuilder
+		@param pResolution The LOD information describing the buffered vertex data
+		@param enStitches The stitch flags associated with the vertex data identifying the surface configuration in tandem with LOD
+		@param nNewVertexCount Number of new vertices to be appended to the vertex buffer
+		@param nIndexCount Total number of triangle vertex indices to be flushed */
+		void directlyPopulateBuffers( IsoVertexElements * pVtxElems, HardwareShadow::LOD * pResolution, const Touch3DFlags enStitches, const size_t nNewVertexCount, const size_t nIndexCount );
 		/// Deletes all hardware buffers and the shadow object
 		void deleteGeometry();
 

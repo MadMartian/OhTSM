@@ -94,8 +94,6 @@ namespace Ogre
 	//-------------------------------------------------------------------------
 	void OverhangTerrainSceneManager::shutdown(void)
 	{
-		// Make sure we free up material (static)
-		_options.terrainMaterial.setNull();
 	}
     //-------------------------------------------------------------------------
     OverhangTerrainSceneManager::~OverhangTerrainSceneManager()
@@ -143,12 +141,6 @@ namespace Ogre
         return trsq;
     }
 
-    //-------------------------------------------------------------------------
-    MaterialPtr& OverhangTerrainSceneManager::getTerrainMaterial(void)
-    {
-        return _options.terrainMaterial;
-    }
-
 	void OverhangTerrainSceneManager::initialise()
 	{
 		_pRoot = getRootSceneNode() -> createChildSceneNode( "Terrain" );
@@ -163,12 +155,6 @@ namespace Ogre
 	void OverhangTerrainSceneManager::clearDebugObjects()
 	{
 		OHTDD_Clear();
-	}
-
-	void OverhangTerrainSceneManager::setTerrainMaterial( const MaterialPtr & pMat )
-	{
-		_pTerrainManager->setMaterial(pMat);
-		_options.terrainMaterial = pMat;
 	}
 
 	//-----------------------------------------------------------------------
@@ -226,7 +212,7 @@ namespace Ogre
 
 		OverhangTerrainManager::RayResult result = 
 			static_cast< OverhangTerrainSceneManager* >( mParentSceneMgr ) 
-			-> getTerrainManager() ->rayIntersects(mRay, 100000);
+			-> getTerrainManager() ->rayIntersects(mRay, OverhangTerrainManager::RayQueryParams::from(100000));
 
 		if (result.hit)
 		{

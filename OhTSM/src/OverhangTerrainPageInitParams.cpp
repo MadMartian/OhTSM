@@ -35,63 +35,44 @@ Adapted by Jonathan Neufeld (http://www.extollit.com) 2011-2013 for OverhangTerr
 namespace Ogre
 {
 	PageInitParams::PageInitParams( const OverhangTerrainOptions & options, const int16 pageX, const int16 pageY ) 
-		: heightmap(NULL), _pColourMaps(NULL), _pMaterials(NULL),
+		: heightmap(NULL),
+		_options(options),
 		countTilesPerPageSide(options.getTilesPerPage()), 
 		countVerticesPerPageSide(options.pageSize), 
 		countVerticesPerTileSide(options.tileSize),
 		countVerticesPerPage(options.getTotalPageSize()),
-		pageX(pageX), pageY(pageY)
+		pageX(pageX), pageY(pageY),
+		_channels(options.channels.descriptor, ChannelParamsFactory(options))
 	{
 		const size_t nTileCount = options.getTilesPerPage() * options.getTilesPerPage();
 
 		heightmap = new Real[countVerticesPerPage];
 		memset(heightmap, 0, countVerticesPerPage * sizeof(Real));
-		if (options.coloured)
-		{
-			const size_t nVertexCount = countVerticesPerTileSide * countVerticesPerTileSide;
-			_pColourMaps = new std::vector< ColourValue * > (nTileCount);
-			for (std::vector< ColourValue * >::iterator i = _pColourMaps->begin(); i != _pColourMaps->end(); ++i)
-			{
-				*i = new ColourValue[nVertexCount];
-				memset(*i, 0, nVertexCount * sizeof(ColourValue));
-			}
-		}
-		if (options.materialPerTile)
-		{
-			// TODO: Threading - Take care and below
-			_pMaterials = new std::vector< MaterialPtr > (nTileCount);
-		}
 	}
 
 	PageInitParams::~PageInitParams()
 	{
 		delete [] heightmap;
-		for (std::vector< ColourValue * >::iterator i = _pColourMaps->begin(); i != _pColourMaps->end(); ++i)
-			delete [] *i;
-		delete _pColourMaps;
-		delete _pMaterials;
 	}
 
 	void PageInitParams::operator << ( StreamSerialiser & ins )
 	{
 		ins.read(heightmap, countVerticesPerPage);
-		if (_pColourMaps != NULL)
-		{
-			const size_t nVertexCount = countVerticesPerTileSide * countVerticesPerTileSide;
-			for (std::vector< ColourValue * >::iterator i = _pColourMaps->begin(); i != _pColourMaps->end(); ++i)
-				ins.read(*i, nVertexCount);
-		}
+		Channel::Ident channel;
+
+		while (Channel::Ident_INVALID != ([&ins, &channel] () -> const Channel::Ident { ins >> channel; return channel; } ()))
+			ins >> _channels[channel];
 	}
 
 	void PageInitParams::operator>>( StreamSerialiser & outs ) const
 	{
 		outs.write(heightmap, countVerticesPerPage);
-		if (_pColourMaps != NULL)
+		for (ChannelIndex::const_iterator i = _channels.begin(); i != _channels.end(); ++i)
 		{
-			const size_t nVertexCount = countVerticesPerTileSide * countVerticesPerTileSide;
-			for (std::vector< ColourValue * >::iterator i = _pColourMaps->begin(); i != _pColourMaps->end(); ++i)
-				outs.write(*i, nVertexCount);
+			outs << i->channel;
+			outs << *i->value;
 		}
+		outs << Channel::Ident_INVALID;
 	}
 
 	const PageInitParams::TileParams PageInitParams::getTile( const size_t i, const size_t j ) const
@@ -110,11 +91,58 @@ namespace Ogre
 
 	void PageInitParams::populateTileParams( TileParams & params, const size_t i, const size_t j ) const
 	{
-		params.heightmap = heightmap;
 		params.vx0 = i * (countVerticesPerTileSide - 1);
 		params.vy0 = j * (countVerticesPerTileSide - 1);
-		params.colourmap = isColourMap() ? const_cast< ColourValue * > (colourmap(i, j)) : NULL;
-		params.material = isMaterials() ? const_cast< MaterialPtr & > (material(i, j)) : MaterialPtr();
+	}
+
+	std::vector< ColourValue * > * PageInitParams::ChannelParams::createColourMap( const size_t nTilesPerPageSide, const size_t nVertsPerTileSide, const OverhangTerrainOptions::ChannelOptions & chanopts )
+	{
+		const size_t nVertexCount = nVertsPerTileSide * nVertsPerTileSide;
+		std::vector< ColourValue * > * pColourMaps = new std::vector< ColourValue * > (nTilesPerPageSide*nTilesPerPageSide);
+		for (std::vector< ColourValue * >::iterator i = pColourMaps->begin(); i != pColourMaps->end(); ++i)
+		{
+			*i = new ColourValue[nVertexCount];
+			memset(*i, 0, nVertexCount * sizeof(ColourValue));
+		}
+		return pColourMaps;
+	}
+
+	PageInitParams::ChannelParams::ChannelParams( const size_t nTilesPerPageSide, const size_t nVertsPerTileSide, const OverhangTerrainOptions::ChannelOptions & chanopts )
+		:	_nTilesPerPageSide(nTilesPerPageSide), _nVertsPerTileSide(nVertsPerTileSide),
+			_pColourMaps( chanopts.voxelRegionFlags & VRF_Colours ? createColourMap(nTilesPerPageSide, nVertsPerTileSide, chanopts) : NULL ),
+			_pMaterials(chanopts.materialPerTile ? new std::vector< MaterialPtr > (nTilesPerPageSide*nTilesPerPageSide) : NULL)
+	{
+
+	}
+
+	PageInitParams::ChannelParams::~ChannelParams()
+	{
+		for (std::vector< ColourValue * >::iterator i = _pColourMaps->begin(); i != _pColourMaps->end(); ++i)
+			delete [] *i;
+		delete _pColourMaps;
+		delete _pMaterials;
+	}
+
+	StreamSerialiser & operator>>( StreamSerialiser & ins, PageInitParams::ChannelParams & params )
+	{
+		if (params._pColourMaps != NULL)
+		{
+			const size_t nVertexCount = params._nVertsPerTileSide * params._nVertsPerTileSide;
+			for (std::vector< ColourValue * >::iterator i = params._pColourMaps->begin(); i != params._pColourMaps->end(); ++i)
+				ins.read(*i, nVertexCount);
+		}
+		return ins;
+	}
+
+	StreamSerialiser & operator<<( StreamSerialiser & outs, const PageInitParams::ChannelParams & params )
+	{
+		if (params._pColourMaps != NULL)
+		{
+			const size_t nVertexCount = params._nVertsPerTileSide * params._nVertsPerTileSide;
+			for (std::vector< ColourValue * >::iterator i = params._pColourMaps->begin(); i != params._pColourMaps->end(); ++i)
+				outs.write(*i, nVertexCount);
+		}
+		return outs;
 	}
 
 }

@@ -37,44 +37,24 @@ http://www.gnu.org/copyleft/lesser.txt.
 #include "IsoSurfaceSharedTypes.h"
 #include "Types.h"
 #include "OverhangTerrainOptions.h"
+#include "DataBase.h"
 
 namespace Ogre
 {
 	/** Factory pattern for various OhTSM classes */
-	class _OverhangTerrainPluginExport MetaFactory
+	class _OverhangTerrainPluginExport MetaBaseFactory
 	{
 	public:
-		/// Some configuration stuff
-		class Config
-		{
-		public:
-			/// Type of normals that IsoSurfaceBuilder generates
-			ComputeNormalsType normals;
-			/// Ratio of space that a transition cell takes-up of a normal regular grid cell
-			Real transitionCellWidthRatio;
-			/// Whether or not to invert generated normals
-			bool flipNormals;
-			/// Flags indicating what properties are available from any given voxel (IsoVertexElements::SurfaceFlags)
-			int dataGridFlags;
-
-			Config()
-				: normals(NORMAL_GRADIENT), transitionCellWidthRatio(0.5f), flipNormals(false), dataGridFlags(0) {}
-		};
-
 		/** 
 		@param opts The main top-level options
 		@param pManRsrcLoader A manual resource loader
-		@param config An instance of the config structure previously defined
 		*/
-		MetaFactory (
+		MetaBaseFactory (
 			const OverhangTerrainOptions & opts, 
-			ManualResourceLoader * pManRsrcLoader, 
-			const Config & config
+			ManualResourceLoader * pManRsrcLoader
 		);
-		~MetaFactory();
+		~MetaBaseFactory();
 
-		/// Creates a new 3D voxel grid / cube region at the optionally specified world coordinates relative to page
-		Voxel::CubeDataRegion * createDataGrid (const Vector3 & pos = Vector3::ZERO) const;
 		/** Creates a new metaball
 		@param position World coordinates relative to page position
 		@param radius World radius size of the ball's sphere
@@ -82,12 +62,16 @@ namespace Ogre
 		@returns A new metaball
 		*/
 		MetaBall * createMetaBall (const Vector3 & position = Vector3::ZERO, const Real radius = 0.0, const bool excavating = true) const;
-		/** Creates a new meta fragment
-		@param pt World coordinates relative to page position
-		@param yl The y-level relative to terrain tile
-		@returns A new meta-fragment with a new voxel grid / cube region attached to it
-		*/
-		MetaFragment::Container * createMetaFragment (const Vector3 & pt = Vector3::ZERO, const YLevel yl = YLevel()) const;
+
+		/// Creates a database pool configured according to the specified voxel-region flags (OverhangTerrainVoxelRegionFlags)
+		Voxel::DataBasePool * createDataBasePool(const size_t nVRFlags);
+
+		/** Creates a cube data region according to the specified voxel-region flags (OverhangTerrainVoxelRegionFlags)
+		@remarks Initializes the cube data region with a factory for creating database objects
+		@param nVRFlags A combination of OverhangTerrainVoxelRegionFlags identifying what channels this region supports
+		@param pPool The database pool factory for checking-out database objects for manipulating the cube data region with uncompressed data
+		@param bbox Bounding-box in world-space coordinates relative to page for the cube data region */
+		Voxel::CubeDataRegion * createCubeDataRegion (const size_t nVRFlags, Voxel::DataBasePool * pPool, const AxisAlignedBox & bbox = AxisAlignedBox::BOX_NULL);
 
 		/// Leverages the manual resource loader to load a named material
 		MaterialPtr acquireMaterial (const std::string & sName, const std::string & sRsrcGroup) const;
@@ -95,12 +79,10 @@ namespace Ogre
 		/// Retrieves the isosurface builder singleton
 		inline IsoSurfaceBuilder * getIsoSurfaceBuilder () const { return _pISB; }
 
-		/** Creates a new isosurface renderable
-		@param pMWF The meta-fragment to bind the renderable to
-		@param sName The mandatory OGRE name for the renderable
-		@returns A new isosurface renderable courtesy of the isosurface builder singleton
-		*/
-		IsoSurfaceRenderable * createIsoSurfaceRenderable (MetaFragment::Container * const pMF, const String & sName) const;
+		/// Retrieves a voxel factory for the specified channel
+		const Voxel::MetaVoxelFactory * getVoxelFactory(const Channel::Ident channel) const;
+		/// Retrieves a voxel factory for the specified channel
+		Voxel::MetaVoxelFactory * getVoxelFactory(const Channel::Ident channel);
 
 	private:
 		boost::mutex _mutex;
@@ -111,10 +93,98 @@ namespace Ogre
 		OverhangTerrainOptions _options;
 		/// The isosurface builder singleton
 		IsoSurfaceBuilder * _pISB;
+
+		/// Index of channel-specific voxel factories
+		Channel::Index< Voxel::MetaVoxelFactory, Channel::FauxFactory< Voxel::MetaVoxelFactory > > * _pVoxelFacts;
 		
 		/// The manual resource loader
 		ManualResourceLoader * _pManRsrcLoader;
 	};
+
+	namespace Voxel
+	{
+		/** Factory for providing channel-specific objects such as meta-fragments and iso-surface renderables */
+		class _OverhangTerrainPluginExport MetaVoxelFactory
+		{
+		public:
+			/// The top-level factory
+			MetaBaseFactory * const base;
+			/// The database pool for cube data regions of this channel
+			DataBasePool * const pool;
+			/// Identifies the channel that this factory applies to
+			const Channel::Ident channel;
+			/// Combination of IsoVertexElements::SurfaceFlags used to configure iso-surface renderables of this channel
+			const size_t surfaceFlags;
+
+			/** Describes the offsets of various vertex elements in the hardware buffers
+				used by renderables of this channel */
+			class VertexDeclarationElements
+			{
+			public:
+				const VertexElement
+					* const position,
+					* const normal,
+					* const diffuse,
+					* const texcoords;
+
+				VertexDeclarationElements(
+					const VertexElement * pPos,
+					const VertexElement * pNorm,
+					const VertexElement * pDiffuse,
+					const VertexElement * pTexC
+				)
+					: position(pPos), normal(pNorm), diffuse(pDiffuse), texcoords(pTexC)
+				{}
+			};
+
+			/**
+			@param pBase The base factory singleton
+			@param channel The channel that this factory applies to
+			@param options The main top-level options
+			*/
+			MetaVoxelFactory (
+				MetaBaseFactory * pBase,
+				const Channel::Ident channel,
+				const OverhangTerrainOptions & options
+			);
+			~MetaVoxelFactory();
+
+			/// Creates a new 3D voxel grid / cube region at the optionally specified world coordinate bounding box relative to page
+			Voxel::CubeDataRegion * createDataGrid (const AxisAlignedBox & bbox) const;
+
+			/** Creates a new meta fragment
+			@param bbox World coordinates relative to page position of the bounding region
+			@param yl The y-level relative to terrain tile
+			@returns A new meta-fragment with a new voxel grid / cube region attached to it
+			*/
+			MetaFragment::Container * createMetaFragment (const AxisAlignedBox & bbox = AxisAlignedBox::BOX_NULL, const YLevel yl = YLevel()) const;
+
+			/** Creates a new isosurface renderable
+			@param pMF The meta-fragment to bind the renderable to
+			@param sName The mandatory OGRE name for the renderable
+			@returns A new isosurface renderable courtesy of the isosurface builder singleton
+			*/
+			IsoSurfaceRenderable * createIsoSurfaceRenderable (MetaFragment::Container * const pMF, const String & sName) const;
+
+			/// Returns the size of a single vertex in the hardware vertex declaration for this channel
+			size_t getVertexSize() const { return _pVtxDecl->getVertexSize(0); }
+
+			/// Returns the vertex declaration elements describing element offsets into the hardware buffers used by renderables of this channel
+			const VertexDeclarationElements * getVertexDeclarationElements() const { return _pVtxDeclElems; }
+
+		private:
+			/// Top-level configuration options
+			const OverhangTerrainOptions _options;
+			/// Channel-specific configuration options
+			const OverhangTerrainOptions::ChannelOptions _chanopts;
+
+			/** The vertex declaration used to define the hardware buffers */
+			VertexDeclaration * _pVtxDecl;
+
+			/** The vertex declaration elements used to define the hardware buffers, compiled from the vertex declaration */
+			VertexDeclarationElements * _pVtxDeclElems;
+		};
+	}
 }
 
 #endif

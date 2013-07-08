@@ -54,11 +54,12 @@ Transvoxel conceived by Eric Lengyel (http://www.terathon.com/voxels/)
 
 #include "MetaObject.h"
 #include "MetaFactory.h"
+#include "ChannelIndex.h"
 
 namespace Ogre {
 	class PagePrivateNonthreaded;
 
-	/** Iterator pattern for walking all metaobjects that occur in a page */
+	/** Iterator pattern for walking all metaobjects that occur in the channel of a page */
 	class _OverhangTerrainPluginExport MetaObjectIterator : public std::iterator< std::input_iterator_tag, MetaObject >
 	{
 	private:
@@ -74,6 +75,8 @@ namespace Ogre {
 		MetaObjsList::const_iterator _iObjects;
 		/// The current terrain tile during iteration
 		TerrainTile * _pTile;
+		/// The channel of meta-fragments to isolate the search to
+		const Channel::Ident _channel;
 
 		/// Tracks all the visited metaobjects so far, used to ensure a metaobject isn't visited more than once
 		std::set< MetaObject * > _setVisitedObjs;
@@ -96,9 +99,10 @@ namespace Ogre {
 	public:
 		/** 
 		@param pPage Private access to the page to iterate metaobjects of
+		@param channel The channel of meta-objects to search through
 		@param enmoType Inline list of metaobject types to refine the search to
 		*/
-		MetaObjectIterator (const PagePrivateNonthreaded * pPage, MetaObject::MOType enmoType, ...);
+		MetaObjectIterator (const PagePrivateNonthreaded * pPage, const Channel::Ident channel, MetaObject::MOType enmoType, ...);
 		~MetaObjectIterator();
 
 		inline MetaObject & operator*() { return **_iObjects; }
@@ -118,10 +122,12 @@ namespace Ogre {
 		}
 	};
 
-	/** Iterates through all meta-fragments occurring in a page */
+	/** Iterates through all meta-fragments occurring in the channel of a page */
 	class _OverhangTerrainPluginExport MetaFragmentIterator : public std::iterator< std::input_iterator_tag, MetaFragment::Container >
 	{
 	private:
+		/// The channel of meta-fragments sought through
+		const Channel::Ident _channel;
 		/// Special access to some private members of the hosting page
 		const PagePrivateNonthreaded * _pPage;
 		/// Iterator for the meta-fragments in the current terrain tile during iteration
@@ -145,9 +151,10 @@ namespace Ogre {
 
 	public:
 		/** 
+		@param channel The channel to limit the search for meta-fragments to
 		@param pPage Private access to the page to iterate metaobjects of
 		*/
-		MetaFragmentIterator (const PagePrivateNonthreaded * pPage);
+		MetaFragmentIterator (const Channel::Ident channel, const PagePrivateNonthreaded * pPage);
 		~MetaFragmentIterator();
 
 		inline MetaFragment::Container & operator * () { return *_iFrags->second; }
@@ -179,8 +186,9 @@ namespace Ogre {
 		/**
         @param mgr The overhang-terrain manager singleton
 		@param pMetaFactory The object factory singleton
+		@param descchann The channel descriptor
 		*/
-		PageSection(const OverhangTerrainManager * mgr, MetaFactory * const pMetaFactory);
+		PageSection(const OverhangTerrainManager * mgr, MetaBaseFactory * const pMetaFactory, const Channel::Descriptor & descchann);
         virtual ~PageSection();
 
 		/// Initializes all terrain tiles with the specified initialization parameters
@@ -192,10 +200,10 @@ namespace Ogre {
 		*/
 		virtual void conjoin();
 
-		/// Adds a listener to the page to receive events fired by this page
-		virtual void addListener (IOverhangTerrainListener * pListener);
-		/// Removes a listener from the page previously added
-		virtual void removeListener (IOverhangTerrainListener * pListener);
+		/// Adds a listener to the page channel to receive events fired by this page that occur in the specified channel
+		virtual void addListener (const Channel::Ident channel, IOverhangTerrainListener * pListener);
+		/// Removes a listener from the page previously added for the specified channel
+		virtual void removeListener (const Channel::Ident channel, IOverhangTerrainListener * pListener);
 
 		/// @returns The center of the page according to its parent node in the scene
 		virtual Vector3 getPosition() const;
@@ -220,15 +228,6 @@ namespace Ogre {
 		/// Determines whether this page and/or its contents have become inconsistent with permanent storage
 		bool isDirty() const;
 
-		/// @returns Discretely samples the heightmap altitude at the specified 2-dimension coordinates that coincide with the arrangement of the cross-section of all voxels occurring in the page
-		inline Real height (const unsigned x, const unsigned y) const 
-		{ 
-			OgreAssert(y < manager->options.pageSize && x < manager->options.pageSize, "Height index out of bounds");
-			return _vHeightmap[y * manager->options.pageSize + x] * manager->options.heightScale; 
-		}
-		/// @returns Discrete heightmap field from which voxel grids making-up the page are created
-		inline Real * getHeightMap () const { return _vHeightmap; }
-
 		/** Commits any pending operations
 		@remarks Executes finalizing tasks for pending operations queued by another thread such as adding metaobjects
 		*/
@@ -239,11 +238,11 @@ namespace Ogre {
 		*/
         void addMetaBall(const Vector3 & position, Real radius, bool excavating = true);
 
-		/** Sets the render queue group which the tiles should be rendered in. */
-		void setRenderQueue(uint8 qid);
+		/** Sets the render queue group for the specified channel within which the tiles should be rendered. */
+		void setRenderQueue(const Channel::Ident channel, uint8 qid);
 
-		// Sets the rendering material of all terrain tiles in this page
-		void setMaterial (const MaterialPtr & m);
+		// Sets the rendering material of all terrain tiles in the specified channel of this page
+		void setMaterial (const Channel::Ident channel, const MaterialPtr & m);
 		// Sets the position of terrain tiles in this page relative to the specified world position
 		void setPosition(const Vector3 & pt);
 		
@@ -256,15 +255,18 @@ namespace Ogre {
 		void detachFromScene();
 
 		/// Computes a ray intersection (restricted to main thread)
-		bool rayIntersects(OverhangTerrainManager::RayResult & result, const Ray& ray, Real distanceLimit = 0) const; 
+		bool rayIntersects(OverhangTerrainManager::RayResult & result, const Ray& ray, const OverhangTerrainManager::RayQueryParams & params) const;
 
-		/// Retrieves an iterator for all meta-fragments in this page
-		MetaFragmentIterator iterateMetaFrags ();
+		/// Retrieves an iterator for all meta-fragments in the specified channel of this page
+		MetaFragmentIterator iterateMetaFrags (const Channel::Ident channel);
 
 	private:
 		typedef std::vector < TerrainTile * > TerrainRow;
 		typedef std::vector < TerrainRow > Terrain2D;
 		typedef std::set< IOverhangTerrainListener * > ListenerSet;
+
+		/// The channel descriptor
+		const Channel::Descriptor _descchann;
 
 		/// An object that terrain tiles can use to gain special access to this class without resorting to be-friending the enitre class
 		PagePrivateNonthreaded * _pPrivate;
@@ -273,13 +275,10 @@ namespace Ogre {
 		/// Page neighbors to other pages in a Von Neumann neighborhood
 		PageSection * _vpNeighbors[CountVonNeumannNeighbors];
 
-		/// Discrete heightmap field from which voxel grids making-up the page are created
-		Real * _vHeightmap;
-
 		/// Page x/y indices in the scene, used to uniquely identify a page
 		int32 _x, _y;
 		/// The object factory singleton
-		MetaFactory * const _pFactory;
+		MetaBaseFactory * const _pFactory;
 		/// The number of tiles per page along one side
 		const size_t _nTileCount;
 		/// The scene node that this page and its renderables is bound to
@@ -288,10 +287,13 @@ namespace Ogre {
 		AxisAlignedBox _bbox;
 		/// The 2-dimensional array of the terrain tiles
 		Terrain2D _vTiles;
-		/// The set of listeners
-		ListenerSet _vListeners;
+		/// The set of listeners distributed by channel
+		Channel::Index< ListenerSet > _vvListeners;
 		/// Flag indicating if this page is inconsistent with permanent storage
 		bool _bDirty;
+
+		/// Pointer to the meta-heightmap metaobject added to every meta-fragment of this terrain-tile when it's created
+		MetaHeightMap * _pMetaHeightmap;
 
 		/// Used for serialization
 		static const uint32 CHUNK_ID;
@@ -299,37 +301,37 @@ namespace Ogre {
 
 		/// Unlinks the neighbor at the specified side, result is dual so it does not need to also be called for the neighbor too
 		void unlinkPageNeighbor (const VonNeumannNeighbor ennNeighbor);
-		/// Finds the appropriate terrain tiles to add the specified metaball to and then does so, does not update voxels
-		void addMetaBallImpl(MetaBall * const pMetaBall);
-		/// Loads the specified list of metaobjects into this page
-		void operator << (const MetaObjsList & objs);
+		/// Finds the appropriate terrain tiles of the specified channel to add the specified metaball to and then does so, does not update voxels
+		void addMetaObjectImpl(const Channel::Ident channel, MetaObject * const pMetaBall);
+		/// Loads the specified list of metaobjects into the specified channel of this page
+		void loadMetaObjects (const Channel::Ident channel, const MetaObjsList & objs);
 		/// Updates the bbox to reflect the current position
 		void updateBBox ();
 
-		/// Dispatches the before-load event to all listeners
-		void fireOnBeforeLoadMetaRegion (MetaFragment::Interfaces::Unique * pFragment);
-		/// Dispatches the create-meta-region event to all listeners
-		void fireOnCreateMetaRegion (Voxel::CubeDataRegion * pCubeDataRegion, MetaFragment::Interfaces::Unique * pUnique, const Vector3 & vertpos);
-		/// Dispatches the init-meta-region event to all listeners
-		void fireOnInitMetaRegion (MetaFragment::Interfaces::const_Basic * pBasic, MetaFragment::Interfaces::Builder * pBuilder);
-		/// Dispatches the destroy-meta-region event to all listeners
-		void fireOnDestroyMetaRegion( MetaFragment::Interfaces::Unique * pUnique );
-		/// @returns True if both the scene node and heightmap are set
-		inline bool isLoaded () const { return _pScNode != NULL && _vHeightmap != NULL; }
+		/// Dispatches the before-load event to all listeners of the specified channel
+		void fireOnBeforeLoadMetaRegion (const Channel::Ident channel, MetaFragment::Interfaces::Unique * pFragment);
+		/// Dispatches the create-meta-region event to all listeners of the specified channel, the bounding-box is in vertex-space
+		void fireOnCreateMetaRegion (const Channel::Ident channel, Voxel::CubeDataRegion * pCubeDataRegion, MetaFragment::Interfaces::Unique * pUnique, const AxisAlignedBox & bbox);
+		/// Dispatches the init-meta-region event to all listeners of the specified channel
+		void fireOnInitMetaRegion (const Channel::Ident channel, MetaFragment::Interfaces::const_Basic * pBasic, MetaFragment::Interfaces::Builder * pBuilder);
+		/// Dispatches the destroy-meta-region event to all listeners of the specified channel
+		void fireOnDestroyMetaRegion( const Channel::Ident channel, MetaFragment::Interfaces::Unique * pUnique );
+		/// @returns True if the scene node is set
+		inline bool isLoaded () const { return _pScNode != NULL; }
 		/// @returns The terrain tile that the specified point intersects
 		TerrainTile * getTerrainTile( const Vector3 & pt, const OverhangCoordinateSpace encsFrom = OCS_World ) const;
 		/// @returns The terrain tile at the specified 2-dimensional array indices in the page
 		inline TerrainTile * getTerrainTile (const size_t i, const size_t j) const { return _vTiles[i][j]; }
-		/// @returns Iterator for all the metaobjects in the scene
-		const MetaObjectIterator iterateMetaObjects () const;
+		/// @returns Iterator for all the metaobjects in the specified channel of the page
+		const MetaObjectIterator iterateMetaObjects (const Channel::Ident channel) const;
 
-		/** Links-up a meta-fragment to a terrain tile potentially containing a meta-fragment
-		@remarks Potentially links-up the meta-fragment of the specified terrain-tile (if it exists) with the one specified if one exists in the terrain-tile with the same y-level.  
-			Both objects must belong to this page, and as such this method can be called from any thread.  This method is dual so that it doesn't have to be called again for the reverse direction.
+		/** Links-up a meta-fragment to a terrain tile potentially containing a meta-fragment for a channel
+		@remarks Potentially links-up the meta-fragment of the specified terrain-tile (if it exists) with the one specified if one exists in the terrain-tile with the same y-level and channel.
+			Both objects must belong to this page and the specified channel.  This method is dual so that it doesn't have to be called again for the reverse direction.
+		@param channel The channel to link-up fragments within
 		@param pHost If a meta-fragment exists in this terrain tile at the appropriate y-level, it will be linked with the other meta-fragment
-		@param i Iterator pointing to a meta-fragment that will be potentially linked to one of the same y-level (if it exists) in the terrain tile
-		*/
-		void linkFragmentHorizontalInternal (TerrainTile * pHost, MetaFragMap::iterator i);
+		@param i Iterator pointing to a meta-fragment that will be potentially linked to one of the same y-level (if it exists) in the terrain tile */
+		void linkFragmentHorizontalInternal (const Channel::Ident channel, TerrainTile * pHost, MetaFragMap::iterator i);
 	};
 
 	/** Facet that exposes certain private features of a page that should 
@@ -352,10 +354,10 @@ namespace Ogre {
 			{ return _pPage->getSceneNode(); }
 
 		inline const OverhangTerrainManager & getManager() const { return *_pPage->manager; }
-		inline const MetaFactory & getFactory () const { return *_pPage->_pFactory; }
+		inline const MetaBaseFactory & getFactory () const { return *_pPage->_pFactory; }
 
-		inline void linkFragmentHorizontalInternal (TerrainTile * pHost, MetaFragMap::iterator i)
-			{ _pPage->linkFragmentHorizontalInternal(pHost, i); }
+		inline void linkFragmentHorizontalInternal (const Channel::Ident channel, TerrainTile * pHost, MetaFragMap::iterator i)
+			{ _pPage->linkFragmentHorizontalInternal(channel, pHost, i); }
 
 		inline TerrainTile * getTerrainTile( const Vector3 & pt, const OverhangCoordinateSpace encsFrom = OCS_World ) const
 			{ return _pPage->getTerrainTile(pt, encsFrom); }
@@ -365,14 +367,17 @@ namespace Ogre {
 		inline int32 getPageX() const { return _pPage->_x; }
 		inline int32 getPageY() const { return _pPage->_y; }
 
-		inline void fireOnBeforeLoadMetaRegion (MetaFragment::Interfaces::Unique * pFragment)
-			{ _pPage->fireOnBeforeLoadMetaRegion(pFragment); }
-		inline void fireOnCreateMetaRegion ( Voxel::CubeDataRegion * pCubeDataRegion, MetaFragment::Interfaces::Unique * pUnique, const Vector3 & vertpos )
-			{ _pPage->fireOnCreateMetaRegion( pCubeDataRegion, pUnique, vertpos); }
-		inline void fireOnInitMetaRegion (MetaFragment::Interfaces::const_Basic * pBasic, MetaFragment::Interfaces::Builder * pBuilder)
-			{ _pPage->fireOnInitMetaRegion(pBasic, pBuilder); }
-		inline void fireOnDestroyMetaRegion ( MetaFragment::Interfaces::Unique * pUnique )
-			{ _pPage->fireOnDestroyMetaRegion(pUnique); }
+		inline const MetaHeightMap * getMetaHeightMap () const { return _pPage->_pMetaHeightmap; }
+		inline MetaHeightMap * getMetaHeightMap () { return _pPage->_pMetaHeightmap; }
+
+		inline void fireOnBeforeLoadMetaRegion (const Channel::Ident channel, MetaFragment::Interfaces::Unique * pFragment)
+			{ _pPage->fireOnBeforeLoadMetaRegion(channel, pFragment); }
+		inline void fireOnCreateMetaRegion ( const Channel::Ident channel, Voxel::CubeDataRegion * pCubeDataRegion, MetaFragment::Interfaces::Unique * pUnique, const AxisAlignedBox & bbox )
+			{ _pPage->fireOnCreateMetaRegion( channel, pCubeDataRegion, pUnique, bbox); }
+		inline void fireOnInitMetaRegion (const Channel::Ident channel, MetaFragment::Interfaces::const_Basic * pBasic, MetaFragment::Interfaces::Builder * pBuilder)
+			{ _pPage->fireOnInitMetaRegion(channel, pBasic, pBuilder); }
+		inline void fireOnDestroyMetaRegion (const Channel::Ident channel, MetaFragment::Interfaces::Unique * pUnique )
+			{ _pPage->fireOnDestroyMetaRegion(channel, pUnique); }
 
 		friend class PageSection;
 	};

@@ -65,6 +65,9 @@ namespace Ogre
 		/// Checks for overlap with an AABB
 		virtual AxisAlignedBox getAABB() const = 0;
 
+		/// Modifies the specified bounding-box to the computed intersection of this meta-object with the bounding-box specified
+		virtual void intersection(AxisAlignedBox & bbox) const = 0;
+
 		/// Used for serialization
 		virtual MOType getObjectType () const = 0;
 		virtual void write(StreamSerialiser & output) const;

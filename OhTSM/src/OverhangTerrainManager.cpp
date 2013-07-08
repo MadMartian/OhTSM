@@ -267,4 +267,59 @@ namespace Ogre
 			break;
 		}
 	} 
+
+	OverhangTerrainManager::RayQueryParams::Channels::Channels()
+		: size(0), array(NULL)
+	{
+
+	}
+
+	OverhangTerrainManager::RayQueryParams::Channels::Channels( const std::list< Channel::Ident > & channels )
+		: array( new Channel::Ident[channels.size()]), size(channels.size())
+	{
+		size_t c = 0;
+		for (std::list< Channel::Ident >::const_iterator i = channels.begin(); i != channels.end(); ++i)
+			array[c++] = *i;
+	}
+
+	OverhangTerrainManager::RayQueryParams::Channels::~Channels()
+	{
+		delete [] array;
+	}
+
+
+	OverhangTerrainManager::RayQueryParams::RayQueryParams( const Real nLimit, const Channels & channels )
+		: limit(limit), channels(channels)
+	{
+
+	}
+
+	OverhangTerrainManager::RayQueryParams::RayQueryParams( const Real nLimit )
+		: limit(limit)
+	{
+
+	}
+
+	Ogre::OverhangTerrainManager::RayQueryParams OverhangTerrainManager::RayQueryParams::from( const Real nLimit )
+	{
+		return RayQueryParams(nLimit);
+	}
+
+	Ogre::OverhangTerrainManager::RayQueryParams OverhangTerrainManager::RayQueryParams::from( const Real nLimit, Channel::Ident channel, ... )
+	{
+		va_list aenChannels;
+		std::list< Channel::Ident > channels;
+
+		va_start (aenChannels, channel);
+
+		while (channel != Channel::Ident_INVALID)
+		{
+			channels.push_back(channel);
+			channel = va_arg(aenChannels, const Channel::Ident);
+		}
+		va_end(aenChannels);
+
+		return RayQueryParams(nLimit, channels);
+	}
+
 }

@@ -661,6 +661,24 @@ namespace Ogre
 		);
 	}
 
+	class BBox2D
+	{
+	public:
+		Vector2 minimum, maximum;
+
+		BBox2D();
+		BBox2D(const Vector2 & minimum, const Vector2 & maximum);
+
+		std::pair< bool, Real > intersects(const Ray & ray, const OverhangCoordinateSpace ocs = OCS_Terrain) const;
+		bool intersects(const AxisAlignedBox & bbox, const OverhangCoordinateSpace ocs = OCS_Terrain) const;
+	};
+
+	inline
+	std::pair< bool, Real > operator % (const Ray & ray, const BBox2D & bbox)
+	{
+		return bbox.intersects(ray);
+	}
+
 	namespace Math2
 	{
 		extern const Real RATIONAL_ERROR;

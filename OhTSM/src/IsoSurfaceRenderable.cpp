@@ -56,7 +56,10 @@ namespace Ogre
 		OHT_DBGTRACE("Delete " << this);
 	}
 
-	void IsoSurfaceRenderable::populateBuffers( const IsoSurfaceBuilder * pBuilder, HardwareShadow::HardwareIsoVertexShadow::ConsumerLock::QueueAccess & queue )
+#ifdef _DEBUG
+#pragma optimize("gtpy", on)
+#endif
+	void IsoSurfaceRenderable::populateBuffers( HardwareShadow::HardwareIsoVertexShadow::ConsumerLock::QueueAccess & queue )
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
 
@@ -64,10 +67,76 @@ namespace Ogre
 		queue.resolution->clearResetHWBuffersFlag();
 		prepareIndexBuffer(queue.resolution->lod, queue.stitches, queue.indexQueue.size());
 		auto pair = getMeshData(queue.resolution->lod, queue.stitches);		
-		pBuilder->populateHardwareBuffers(pair.first->getVertexBuffer(), pair.second->getIndexData()->indexBuffer, queue);
+
+		HardwareVertexBufferSharedPtr pVtxBuffer = pair.first->getVertexBuffer();
+		HardwareIndexBufferSharedPtr pIdxBuffer = pair.second->getIndexData()->indexBuffer;
+
+		const MetaVoxelFactory::VertexDeclarationElements * pVtxDeclElems = _pMWF->factory->getVertexDeclarationElements();
+		const size_t nVertexByteSize = _pMWF->factory->getVertexSize();
+
+		if (!queue.vertexQueue.empty())
+		{
+			unsigned char * pOffset = static_cast< unsigned char * > (
+				pVtxBuffer->lock(
+					queue.resolution->getHWIndexBufferTail() * nVertexByteSize,
+					queue.vertexQueue.size() * nVertexByteSize,
+					HardwareBuffer::HBL_DISCARD
+				)
+			);
+
+			for (BuilderQueue::VertexElementList::const_iterator i = queue.vertexQueue.begin(); i != queue.vertexQueue.end(); ++i)
+			{
+				Real * pReal;
+
+				pVtxDeclElems->position->baseVertexPointerToElement(pOffset, &pReal);
+				*pReal++ = i->position.x;
+				*pReal++ = i->position.y;
+				*pReal++ = i->position.z;
+
+				if (pVtxDeclElems->normal != NULL)
+				{
+					pVtxDeclElems->normal->baseVertexPointerToElement(pOffset, &pReal);
+					*pReal++ = i->normal.x;
+					*pReal++ = i->normal.y;
+					*pReal++ = i->normal.z;
+				}
+				if (pVtxDeclElems->diffuse != NULL)
+				{
+					uint32 * uColour;
+					pVtxDeclElems->diffuse->baseVertexPointerToElement(pOffset, &uColour);
+					*uColour = i->colour;
+				}
+				if (pVtxDeclElems->texcoords != NULL)
+				{
+					pVtxDeclElems->texcoords->baseVertexPointerToElement(pOffset, &pReal);
+					*pReal++ = i->texcoord.x;
+					*pReal++ = i->texcoord.y;
+				}
+				pOffset += nVertexByteSize;
+			}
+
+			pVtxBuffer->unlock();
+		}
+
+		if (!queue.indexQueue.empty())
+		{
+			HWVertexIndex * pIndex = static_cast< HWVertexIndex * > (
+				pIdxBuffer->lock(HardwareBuffer::HBL_DISCARD)
+			);
+			for (BuilderQueue::IndexList::const_iterator i = queue.indexQueue.begin(); i != queue.indexQueue.end(); ++i)
+				*pIndex++ = *i;
+
+			pIdxBuffer->unlock();
+		}
+
+		queue.consume();
+
 	}
 
-	void IsoSurfaceRenderable::directlyPopulateBuffers( const IsoSurfaceBuilder * pBuilder, HardwareShadow::LOD * pResolution, const Touch3DFlags enStitches, const size_t nNewVertexCount, const size_t nIndexCount )
+#ifdef _DEBUG
+#pragma optimize("gtpy", on)
+#endif
+	void IsoSurfaceRenderable::directlyPopulateBuffers( IsoVertexElements * pVtxElems, HardwareShadow::LOD * pResolution, const Touch3DFlags enStitches, const size_t nNewVertexCount, const size_t nIndexCount )
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
 
@@ -75,7 +144,81 @@ namespace Ogre
 		pResolution->clearResetHWBuffersFlag();
 		prepareIndexBuffer(pResolution->lod, enStitches, nIndexCount);
 		auto pair = getMeshData(pResolution->lod, enStitches);		
-		pBuilder->directlyPopulateHardwareBuffers(pair.first->getVertexBuffer(), pair.second->getIndexData()->indexBuffer, pResolution);
+		const MetaVoxelFactory::VertexDeclarationElements * const pVtxDeclElems = _pMWF->factory->getVertexDeclarationElements();
+		HardwareVertexBufferSharedPtr pVtxBuffer = pair.first->getVertexBuffer();
+		HardwareIndexBufferSharedPtr pIdxBuffer = pair.second->getIndexData()->indexBuffer;
+
+		const size_t nVertexByteSize = _pMWF->factory->getVertexSize();
+		const float fVertScale =
+			const_cast< const MetaFragment::Container * > (_pMWF)	// Enter "const" context
+			->acquire< MetaFragment::Interfaces::const_Basic > ()	// Acquire basic concurrent access
+			.block					// Retrieve the fragment's voxel cube region
+			->meta					// Access the cube region descriptor
+			.scale;					// Finally access the grid cell scale
+
+		if (!pVtxElems->vertexShipment.empty())
+		{
+			unsigned char * pOffset = static_cast< unsigned char * > (
+				pVtxBuffer->lock(
+					pResolution->getHWIndexBufferTail() * nVertexByteSize,
+					pVtxElems->vertexShipment.size() * nVertexByteSize,
+					HardwareBuffer::HBL_DISCARD
+				)
+			);
+
+			for (IsoVertexVector::const_iterator i = pVtxElems->vertexShipment.begin(); i != pVtxElems->vertexShipment.end(); ++i)
+			{
+				Real * pReal;
+
+				const IsoFixVec3 & pt = pVtxElems->positions[*i];
+				pVtxDeclElems->position->baseVertexPointerToElement(pOffset, &pReal);
+				*pReal++ = Real(pt.x) * fVertScale;
+				*pReal++ = Real(pt.y) * fVertScale;
+				*pReal++ = Real(pt.z) * fVertScale;
+
+				if (pVtxDeclElems->normal != NULL)
+				{
+					const Vector3 & n = pVtxElems->normals[*i];
+					pVtxDeclElems->normal->baseVertexPointerToElement(pOffset, &pReal);
+					*pReal++ = n.x;
+					*pReal++ = n.y;
+					*pReal++ = n.z;
+				}
+				if (pVtxDeclElems->diffuse != NULL)
+				{
+					uint32 * uColour;
+					pVtxDeclElems->diffuse->baseVertexPointerToElement(pOffset, &uColour);
+					Root::getSingleton().convertColourValue(pVtxElems->colours[*i], uColour);
+				}
+				if (pVtxDeclElems->texcoords != NULL)
+				{
+					pVtxDeclElems->texcoords->baseVertexPointerToElement(pOffset, &pReal);
+					*pReal++ = pVtxElems->texcoords[*i][0];
+					*pReal++ = pVtxElems->texcoords[*i][1];
+				}
+				pOffset += nVertexByteSize;
+			}
+
+			pVtxBuffer->unlock();
+		}
+
+		if (!pVtxElems->triangles.empty())
+		{
+			HWVertexIndex * pIndex = static_cast< HWVertexIndex * > (
+				pIdxBuffer->lock(HardwareBuffer::HBL_DISCARD)
+			);
+			for (IsoTriangleVector::const_iterator i = pVtxElems->triangles.begin(); i != pVtxElems->triangles.end(); ++i)
+			{
+				*pIndex++ = pVtxElems->indices[i->vertices[0]];
+				*pIndex++ = pVtxElems->indices[i->vertices[1]];
+				*pIndex++ = pVtxElems->indices[i->vertices[2]];
+			}
+
+			pIdxBuffer->unlock();
+		}
+
+		pResolution->updateHardwareState(enStitches, pVtxElems->vertexShipment.begin(), pVtxElems->vertexShipment.end());
+		pVtxElems->vertexShipment.clear();
 	}
 
 	void IsoSurfaceRenderable::deleteGeometry()

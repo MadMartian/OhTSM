@@ -35,6 +35,7 @@ http://www.gnu.org/copyleft/lesser.txt.
 
 #include "IsoSurfaceBuilder.h"
 #include "IsoSurfaceRenderable.h"
+#include "MetaWorldFragment.h"
 
 #include "DebugTools.h"
 
@@ -169,33 +170,36 @@ namespace Ogre
 		flags.setParent(this);
 	}
 
-	IsoSurfaceBuilder::IsoSurfaceBuilder(const CubeDataRegionDescriptor & cubemeta, const unsigned short nLODCount, const Real fMaxPixErr, const Real fTCWidthRatio /*= 0.5f*/, const bool bFlipNormals /*= false*/, const ComputeNormalsType ennt /*= NORMAL_WEIGHTED_AVERAGE*/)
-  	: 	_cubemeta(cubemeta), _bFlipNormals(bFlipNormals),
-		_enNormalType (ennt), _nLODCount(nLODCount),
-		_fMaxPixelError(fMaxPixErr), 
-		_vRegularCases(new unsigned char [cubemeta.cellcount])
+	IsoSurfaceBuilder::IsoSurfaceBuilder(
+		const CubeDataRegionDescriptor & cubemeta,
+		const Channel::Index< ChannelParameters > & chanparams
+	)
+	: 	_cubemeta(cubemeta),
+		_chanparams(chanparams),
+		_vRegularCases(new unsigned char [cubemeta.cellcount]),
+		_pCurrentChannelParams(NULL)
 	{
-		assert((_enNormalType != NORMAL_GRADIENT || _cubemeta.hasGradient()) && "Data grid definition must support gradient if you're gonna go with gradient-based normals");
 		oht_assert_threadmodel(ThrMdl_Main);
 
-		char nSurfaceFlags = 0;
+		_pMainVtxElems = new MainVertexElements(cubemeta);
 
-		if (_enNormalType != NORMAL_NONE)
-			nSurfaceFlags |= IsoVertexElements::GEN_NORMALS;
+		for (unsigned c = 0; c < CountOrthogonalNeighbors; ++c)
+			_vvTrCase[c] = new unsigned short[cubemeta.sidecellcount];
 
-		if (_cubemeta.hasColours())
-			nSurfaceFlags |= IsoVertexElements::GEN_VERTEX_COLOURS;
+		WorkQueue * pWorkQ = Root::getSingleton().getWorkQueue();
+		_nWorkQChannID = pWorkQ->getChannel("OhTSM/IsoSurfaceBuilder");
+		pWorkQ->addRequestHandler(_nWorkQChannID, this);
+		pWorkQ->addResponseHandler(_nWorkQChannID, this);
+	}
 
-		_pMainVtxElems = new MainVertexElements(cubemeta, nSurfaceFlags);
-
-		OgreAssert(fTCWidthRatio <= 1.0f && fTCWidthRatio >= 0.0f, "Width ratio was out of bounds");
-
-		_txTCHalf2Full = new TransitionCellTranslators[_nLODCount];
-		for (unsigned l = 0; l < _nLODCount; ++l)
+	IsoSurfaceBuilder::ChannelParameters::TransitionCellTranslators * IsoSurfaceBuilder::ChannelParameters::createTransitionCellTranslators( const unsigned short nLODCount, const Real fTCWidthRatio )
+	{
+		TransitionCellTranslators * txTCHalf2Full = new TransitionCellTranslators[nLODCount];
+		for (unsigned l = 0; l < nLODCount; ++l)
 		{
 			for (unsigned s = 0; s < CountTouch3DSides; ++s)
 			{
-				_txTCHalf2Full[l].side[s] = IsoFixVec3(
+				txTCHalf2Full[l].side[s] = IsoFixVec3(
 					((s & T3DS_West) ? +fTCWidthRatio : 0) + 
 					((s & T3DS_East) ? -fTCWidthRatio : 0),
 
@@ -207,44 +211,30 @@ namespace Ogre
 				) * short(1 << l);
 			}
 		}
+		return txTCHalf2Full;
+	}
 
-		for (unsigned c = 0; c < CountOrthogonalNeighbors; ++c)
-			_vvTrCase[c] = new unsigned short[cubemeta.sidecellcount];
+	IsoSurfaceBuilder::ChannelParameters::ChannelParameters(
+		const Real fTCWidthRatio,
+		const size_t nSurfaceFlags,
+		const unsigned short nLODCount,
+		const Real fMaxPixelError,
+		const bool bFlipNormals,
+		const NormalsType enNormalType
+	)
+		:	_txTCHalf2Full(createTransitionCellTranslators(nLODCount, fTCWidthRatio)),
+			surfaceFlags(nSurfaceFlags),
+			clod(nLODCount),
+			maxPixelError(fMaxPixelError),
+			flipNormals(bFlipNormals),
+			normalsType(enNormalType)
+	{
+		OgreAssert(fTCWidthRatio <= 1.0f && fTCWidthRatio >= 0.0f, "Width ratio was out of bounds");
+	}
 
-
-		HardwareBufferManager * pBuffMan = HardwareBufferManager::getSingletonPtr();
-		_pVtxDecl = pBuffMan->createVertexDeclaration();
-
-		size_t offset = 0;
-
-		const VertexElement * pPos, * pNorm, * pDiffuse, * pTexC;
-		pPos = pNorm = pDiffuse = pTexC = NULL;
-
-		pPos = &_pVtxDecl->addElement(0, offset, VET_FLOAT3, VES_POSITION);
-		offset += VertexElement::getTypeSize(VET_FLOAT3);
-
-		if (nSurfaceFlags & IsoVertexElements::GEN_NORMALS)
-		{
-			pNorm = &_pVtxDecl->addElement(0, offset, VET_FLOAT3, VES_NORMAL);
-			offset += VertexElement::getTypeSize(VET_FLOAT3);
-		}
-		if (nSurfaceFlags & IsoVertexElements::GEN_VERTEX_COLOURS)
-		{
-			pDiffuse = &_pVtxDecl->addElement(0, offset, VET_COLOUR, VES_DIFFUSE);
-			offset += VertexElement::getTypeSize(VET_COLOUR);
-		}
-		if (nSurfaceFlags & IsoVertexElements::GEN_TEX_COORDS)
-		{
-			pTexC = &_pVtxDecl->addElement(0, offset, VET_FLOAT2, VES_TEXTURE_COORDINATES);
-			offset += VertexElement::getTypeSize(VET_FLOAT2);
-		}
-
-		_pVtxDeclElems = new VertexDeclarationElements(pPos, pNorm, pDiffuse, pTexC);
-
-		WorkQueue * pWorkQ = Root::getSingleton().getWorkQueue();
-		_nWorkQChannID = pWorkQ->getChannel("OhTSM/IsoSurfaceBuilder");
-		pWorkQ->addRequestHandler(_nWorkQChannID, this);
-		pWorkQ->addResponseHandler(_nWorkQChannID, this);
+	IsoSurfaceBuilder::ChannelParameters::~ChannelParameters()
+	{
+		delete [] _txTCHalf2Full;
 	}
 
 	IsoSurfaceBuilder::~IsoSurfaceBuilder()
@@ -257,13 +247,15 @@ namespace Ogre
 				delete [] _vvTrCase[c];
 			delete _pMainVtxElems;
 
-			delete [] _txTCHalf2Full;
-
-			delete _pVtxDeclElems;
-
-			HardwareBufferManager * pBuffMan = HardwareBufferManager::getSingletonPtr();
-			pBuffMan->destroyVertexDeclaration(_pVtxDecl);
 		}
+	}
+
+	size_t IsoSurfaceBuilder::genSurfaceFlags( const OverhangTerrainOptions::ChannelOptions & chanopts )
+	{
+		return
+			(chanopts.normals != NT_None ? IsoVertexElements::GEN_NORMALS : 0) |
+			(chanopts.voxelRegionFlags & VRF_Colours ? IsoVertexElements::GEN_VERTEX_COLOURS : 0) |
+			(chanopts.voxelRegionFlags & VRF_TexCoords ? IsoVertexElements::GEN_TEX_COORDS : 0);
 	}
 
 	WorkQueue::Response* IsoSurfaceBuilder::handleRequest( const WorkQueue::Request* req, const WorkQueue* srcQ )
@@ -281,7 +273,8 @@ namespace Ogre
 #if defined(_DEBUG) || defined(_OHT_LOG_TRACE)
 					reqdata.debugs,
 #endif // _DEBUG
-					queue.resolution, reqdata.cubedata, reqdata.shadow, reqdata.stitches, reqdata.vertexBufferCapacity
+					reqdata.channel,
+					queue.resolution, reqdata.cubedata, reqdata.shadow, reqdata.surfaceFlags, reqdata.stitches, reqdata.vertexBufferCapacity
 				);
 				fillShadowQueues(queue, reqdata.cubedata->getGridScale());
 			}
@@ -305,7 +298,9 @@ namespace Ogre
 		reqdata.debugs = DebugInfo(pISR);
 #endif // _DEBUG
 		reqdata.shadow = pISR->getShadow();
+		reqdata.channel = pISR->getMetaWorldFragment() ->factory->channel;
 		reqdata.lod = nLOD;
+		reqdata.surfaceFlags = pISR->getMetaWorldFragment() ->factory->surfaceFlags;
 		reqdata.stitches = enStitches;
 		reqdata.vertexBufferCapacity = pISR->getVertexBufferCapacity(nLOD);
 		return Root::getSingleton().getWorkQueue()->addRequest(_nWorkQChannID, RT_BuildSurface, Any(reqdata));
@@ -325,9 +320,12 @@ namespace Ogre
 #if defined(_DEBUG) || defined(_OHT_LOG_TRACE)
 				DebugInfo(pISR),
 #endif // _DEBUG
-				pResolution, pDataGrid, pISR->getShadow(), enStitches, pISR->getVertexBufferCapacity(nLOD)
+				pISR->getMetaWorldFragment() ->factory->channel,
+				pResolution, pDataGrid, pISR->getShadow(),
+				pISR->getMetaWorldFragment() ->factory->surfaceFlags,
+				enStitches, pISR->getVertexBufferCapacity(nLOD)
 			);
-			pISR->directlyPopulateBuffers(this, pResolution, enStitches, _pMainVtxElems->vertexShipment.size(), _pMainVtxElems->triangles.size() * 3);
+			pISR->directlyPopulateBuffers(_pMainVtxElems, pResolution, enStitches, _pMainVtxElems->vertexShipment.size(), _pMainVtxElems->triangles.size() * 3);
 		}
 	}
 
@@ -338,9 +336,11 @@ namespace Ogre
 #if defined(_DEBUG) || defined(_OHT_LOG_TRACE)
 		const DebugInfo & debugs,
 #endif // _DEBUG
+		const Channel::Ident channel,
 		HardwareShadow::LOD * pResolution,
 		const Voxel::CubeDataRegion * pDataGrid, 
 		SharedPtr< HardwareIsoVertexShadow > & pShadow, 
+		const size_t nSurfaceFlags,
 		const Touch3DFlags enStitches, 
 		const size_t nVertexBufferCapacity 
 	)
@@ -350,7 +350,9 @@ namespace Ogre
 		_pShadow = pShadow;
 		_pResolution = pResolution;
 		_nLOD = _pResolution->lod;
+		_nSurfaceFlags = nSurfaceFlags;
 		_enStitches = enStitches;
+		_pCurrentChannelParams = & _chanparams[channel];
 
 #if defined(_DEBUG) || defined(_OHT_LOG_TRACE)
 		_debugs = debugs;
@@ -478,6 +480,7 @@ namespace Ogre
 	}
 
 	void IsoSurfaceBuilder::rayQuery( 
+		const Channel::Ident channel,
 		const CubeDataRegion * pDataGrid, 
 		RayCellWalk & walker, 
 		const WorldCellCoords & wcctr, 
@@ -498,6 +501,7 @@ namespace Ogre
 			_enStitches = highs;
 			_nLOD = nLOD;
 			_vCenterIVP = _pResolution->middleIsoVertexProperties;
+			_pCurrentChannelParams = & _chanparams[channel];
 
 			GridCell gc(_cubemeta, nLOD);
 			TransitionCell tc(_cubemeta, nLOD, OrthoNaN);
@@ -577,7 +581,7 @@ namespace Ogre
 							data, tc, trcase, 
 							[&](const IsoVertexIndex coarse, const IsoVertexIndex refined, const TransitionVRECaCC::Type type, const VoxelIndex c0, const VoxelIndex c1, const Touch3DSide side3d) 
 							{
-								const IsoFixVec3 & dv = _txTCHalf2Full[_nLOD].side[side3d];
+								const IsoFixVec3 & dv = _pCurrentChannelParams->_txTCHalf2Full[_nLOD].side[side3d];
 								IsoFixVec3::PrecisionType t = computeIsoVertexPosition(data.values, c0, c1);
 								configureIsoVertex(
 									_pMainVtxElems, pDataGrid, data, refined, t, c0, c1,
@@ -660,148 +664,6 @@ namespace Ogre
 	}
 
 #ifdef _DEBUG
-#pragma optimize("gtpy", on)
-#endif
-	void IsoSurfaceBuilder::populateHardwareBuffers(HardwareVertexBufferSharedPtr pVtxBuffer, HardwareIndexBufferSharedPtr pIdxBuffer, HardwareShadow::HardwareIsoVertexShadow::ConsumerLock::QueueAccess & queue) const
-	{
-		oht_assert_threadmodel(ThrMdl_Main);
-
-		const size_t nVertexByteSize = _pVtxDecl->getVertexSize(0);
-
-		if (!queue.vertexQueue.empty())
-		{
-			unsigned char * pOffset = static_cast< unsigned char * > (
-				pVtxBuffer->lock(
-					queue.resolution->getHWIndexBufferTail() * nVertexByteSize, 
-					queue.vertexQueue.size() * nVertexByteSize,
-					HardwareBuffer::HBL_DISCARD
-				)
-			);
-
-			for (BuilderQueue::VertexElementList::const_iterator i = queue.vertexQueue.begin(); i != queue.vertexQueue.end(); ++i)
-			{
-				Real * pReal;
-
-				_pVtxDeclElems->position->baseVertexPointerToElement(pOffset, &pReal);
-				*pReal++ = i->position.x;
-				*pReal++ = i->position.y;
-				*pReal++ = i->position.z;
-
-				if (_pVtxDeclElems->normal != NULL)
-				{
-					_pVtxDeclElems->normal->baseVertexPointerToElement(pOffset, &pReal);
-					*pReal++ = i->normal.x;
-					*pReal++ = i->normal.y;
-					*pReal++ = i->normal.z;
-				}
-				if (_pVtxDeclElems->diffuse != NULL)
-				{
-					uint32 * uColour;
-					_pVtxDeclElems->diffuse->baseVertexPointerToElement(pOffset, &uColour);
-					*uColour = i->colour;
-				}
-				if (_pVtxDeclElems->texcoords != NULL)
-				{
-					_pVtxDeclElems->texcoords->baseVertexPointerToElement(pOffset, &pReal);
-					*pReal++ = i->texcoord.x;
-					*pReal++ = i->texcoord.y;
-				}
-				pOffset += nVertexByteSize;
-			}
-
-			pVtxBuffer->unlock();
-		}
-
-		if (!queue.indexQueue.empty())
-		{
-			HWVertexIndex * pIndex = static_cast< HWVertexIndex * > (
-				pIdxBuffer->lock(HardwareBuffer::HBL_DISCARD)
-			);
-			for (BuilderQueue::IndexList::const_iterator i = queue.indexQueue.begin(); i != queue.indexQueue.end(); ++i)
-				*pIndex++ = *i;
-			
-			pIdxBuffer->unlock();
-		}
-
-		queue.consume();
-	}
-
-#ifdef _DEBUG
-#pragma optimize("gtpy", on)
-#endif
-	void IsoSurfaceBuilder::directlyPopulateHardwareBuffers( HardwareVertexBufferSharedPtr pVtxBuffer, HardwareIndexBufferSharedPtr pIdxBuffer, HardwareShadow::LOD * pResolution ) const
-	{
-		oht_assert_threadmodel(ThrMdl_Main);
-
-		const size_t nVertexByteSize = _pVtxDecl->getVertexSize(0);
-		const float fVertScale = _cubemeta.scale;
-
-		if (!_pMainVtxElems->vertexShipment.empty())
-		{
-			unsigned char * pOffset = static_cast< unsigned char * > (
-				pVtxBuffer->lock(
-					pResolution->getHWIndexBufferTail() * nVertexByteSize, 
-					_pMainVtxElems->vertexShipment.size() * nVertexByteSize,
-					HardwareBuffer::HBL_DISCARD
-				)
-			);
-
-			for (IsoVertexVector::const_iterator i = _pMainVtxElems->vertexShipment.begin(); i != _pMainVtxElems->vertexShipment.end(); ++i)
-			{
-				Real * pReal;
-
-				const IsoFixVec3 & pt = _pMainVtxElems->positions[*i];
-				_pVtxDeclElems->position->baseVertexPointerToElement(pOffset, &pReal);
-				*pReal++ = Real(pt.x) * fVertScale;
-				*pReal++ = Real(pt.y) * fVertScale;
-				*pReal++ = Real(pt.z) * fVertScale;
-
-				if (_pVtxDeclElems->normal != NULL)
-				{
-					const Vector3 & n = _pMainVtxElems->normals[*i];
-					_pVtxDeclElems->normal->baseVertexPointerToElement(pOffset, &pReal);
-					*pReal++ = n.x;
-					*pReal++ = n.y;
-					*pReal++ = n.z;
-				}
-				if (_pVtxDeclElems->diffuse != NULL)
-				{
-					uint32 * uColour;
-					_pVtxDeclElems->diffuse->baseVertexPointerToElement(pOffset, &uColour);
-					Root::getSingleton().convertColourValue(_pMainVtxElems->colours[*i], uColour);
-				}
-				if (_pVtxDeclElems->texcoords != NULL)
-				{
-					_pVtxDeclElems->texcoords->baseVertexPointerToElement(pOffset, &pReal);
-					*pReal++ = _pMainVtxElems->texcoords[*i][0];
-					*pReal++ = _pMainVtxElems->texcoords[*i][1];
-				}
-				pOffset += nVertexByteSize;
-			}
-
-			pVtxBuffer->unlock();
-		}
-
-		if (!_pMainVtxElems->triangles.empty())
-		{
-			HWVertexIndex * pIndex = static_cast< HWVertexIndex * > (
-				pIdxBuffer->lock(HardwareBuffer::HBL_DISCARD)
-			);
-			for (IsoTriangleVector::const_iterator i = _pMainVtxElems->triangles.begin(); i != _pMainVtxElems->triangles.end(); ++i)
-			{
-				*pIndex++ = _pMainVtxElems->indices[i->vertices[0]];
-				*pIndex++ = _pMainVtxElems->indices[i->vertices[1]];
-				*pIndex++ = _pMainVtxElems->indices[i->vertices[2]];
-			}
-
-			pIdxBuffer->unlock();
-		}
-
-		pResolution->updateHardwareState(_enStitches, _pMainVtxElems->vertexShipment.begin(), _pMainVtxElems->vertexShipment.end());
-		_pMainVtxElems->vertexShipment.clear();
-	}
-
-#ifdef _DEBUG
 	#pragma optimize("gtpy", on)
 #endif
 	void IsoSurfaceBuilder::restoreTransitionVertexMappings( const_DataAccessor & data )
@@ -853,7 +715,7 @@ namespace Ogre
 #endif
 	void IsoSurfaceBuilder::attainRegularTriangulationCases( const_DataAccessor & data )
 	{
-		OgreAssert(_nLOD < _nLODCount, "Level of detail exceeds lowest allowed");
+		OgreAssert(_nLOD < _pCurrentChannelParams->clod, "Level of detail exceeds lowest allowed");
 		oht_assert_threadmodel(ThrMdl_Single);
 
 		const IsoVertexIndex nDim = _cubemeta.dimensions;
@@ -931,7 +793,7 @@ namespace Ogre
 #endif
 	void IsoSurfaceBuilder::marshalRegularVertexElements( const CubeDataRegion * pDataGrid, const_DataAccessor & data )
 	{
-		OgreAssert(_nLOD < _nLODCount, "Level of detail exceeds lowest allowed");
+		OgreAssert(_nLOD < _pCurrentChannelParams->clod, "Level of detail exceeds lowest allowed");
 		oht_assert_threadmodel(ThrMdl_Single);
 
 		GridCell gc (_cubemeta, _nLOD);
@@ -960,7 +822,7 @@ namespace Ogre
 #endif
 	void IsoSurfaceBuilder::marshalTransitionVertexElements( const CubeDataRegion * pDataGrid, const_DataAccessor & data, const OrthogonalNeighbor on )
 	{
-		OgreAssert(_nLOD < _nLODCount, "Level of detail exceeds lowest allowed");
+		OgreAssert(_nLOD < _pCurrentChannelParams->clod, "Level of detail exceeds lowest allowed");
 		oht_assert_threadmodel(ThrMdl_Single);
 
 		TransitionCell tc (_cubemeta, _nLOD, on);
@@ -976,7 +838,7 @@ namespace Ogre
 			{
 				//OHTDD_Cube(AxisAlignedBox(GridPointCoords(tc), Vector3(GridPointCoords(tc)) + float(1 << tc.halfLOD)));
 
-				const IsoFixVec3 & dv = _txTCHalf2Full[_nLOD].side[side3d];
+				const IsoFixVec3 & dv = _pCurrentChannelParams->_txTCHalf2Full[_nLOD].side[side3d];
 				t = computeIsoVertexPosition(data.values, c0, c1);
 				configureIsoVertex(
 					_pMainVtxElems,
@@ -1002,7 +864,7 @@ namespace Ogre
 #endif
 	void IsoSurfaceBuilder::collectTransitionVertexProperties( const_DataAccessor & data, const OrthogonalNeighbor on )
 	{
-		OgreAssert(_nLOD < _nLODCount, "Level of detail exceeds lowest allowed");
+		OgreAssert(_nLOD < _pCurrentChannelParams->clod, "Level of detail exceeds lowest allowed");
 		oht_assert_threadmodel(ThrMdl_Single);
 
 		TransitionCell tc (_cubemeta, _nLOD, on);
@@ -1033,8 +895,8 @@ namespace Ogre
 	#pragma optimize("gtpy", on)
 #endif
 	void IsoSurfaceBuilder::triangulateRegulars()
- 	{
-		OgreAssert(_nLOD < _nLODCount, "Level of detail exceeds lowest allowed");
+	{
+		OgreAssert(_nLOD < _pCurrentChannelParams->clod, "Level of detail exceeds lowest allowed");
 		oht_assert_threadmodel(ThrMdl_Single);
 
 		RegularTriangleBuilder tribuild (_cubemeta, _pMainVtxElems, _nLOD);
@@ -1089,7 +951,7 @@ namespace Ogre
 #endif
 	void IsoSurfaceBuilder::triangulateTransitions()
 	{
-		OgreAssert(_nLOD < _nLODCount, "Level of detail exceeds lowest allowed");
+		OgreAssert(_nLOD < _pCurrentChannelParams->clod, "Level of detail exceeds lowest allowed");
 		oht_assert_threadmodel(ThrMdl_Single);
 #ifdef _OHT_LOG_TRACE
 		TransitionCell tc(_cubemeta, _nLOD, OrthoNaN);
@@ -1167,7 +1029,7 @@ namespace Ogre
 			-n.x*n.y,				1 - Math::Sqr(n.y),		-n.y*n.z,
 			-n.x*n.z,						-n.y*n.z,		1 - Math::Sqr(n.z)
 		);
-		const IsoFixVec3 & dv = _txTCHalf2Full[_nLOD].side[t3ds];
+		const IsoFixVec3 & dv = _pCurrentChannelParams->_txTCHalf2Full[_nLOD].side[t3ds];
 
 		_pMainVtxElems->positions[index] += IsoFixVec3(matProj * Vector3(-dv)) + dv;
 	}
@@ -1181,23 +1043,23 @@ namespace Ogre
 		const IsoFixVec3* vertices = pDataGrid->getVertices();
 		pVtxElems->positions[nIsoVertexIdx] = vertices[corner0]*t + vertices[corner1]*(-t+signed short(1)) + dv;
 
-		if (_pMainVtxElems->surfaceFlags & IsoVertexElements::GEN_NORMALS)
+		if (_nSurfaceFlags & IsoVertexElements::GEN_NORMALS)
 		{
 			// Generate optional normal
-			switch (_enNormalType)
+			switch (_pCurrentChannelParams->normalsType)
 			{
-			case NORMAL_WEIGHTED_AVERAGE:
-			case NORMAL_AVERAGE:
+			case NT_WeightedAverage:
+			case NT_Average:
 				pVtxElems->normals[nIsoVertexIdx] = Vector3::ZERO;
 				break;
 
-			case NORMAL_GRADIENT:
+			case NT_Gradient:
 				{
 					const IsoFixVec3 
 						g0(static_cast< const_DataAccessor::GradientField::VectorType > (data.gradients[corner0])),
 						g1(static_cast< const_DataAccessor::GradientField::VectorType > (data.gradients[corner1]));
 
-					if (_bFlipNormals)
+					if (_pCurrentChannelParams->flipNormals)
 						pVtxElems->normals[nIsoVertexIdx] = (g0 - g1)*t - g0;
 					else
 						pVtxElems->normals[nIsoVertexIdx] = g0 + (g1 - g0)*t;
@@ -1207,7 +1069,7 @@ namespace Ogre
 			}
 		}
 
-		if (_pMainVtxElems->surfaceFlags & IsoVertexElements::GEN_VERTEX_COLOURS)
+		if (_nSurfaceFlags & IsoVertexElements::GEN_VERTEX_COLOURS)
 		{
 			// Generate optional vertex colours by interpolation
 			const ColourValue 
@@ -1216,7 +1078,7 @@ namespace Ogre
 			pVtxElems->colours[nIsoVertexIdx] = t*c0 + (-t+signed short(1))*c1;
 		}
 
-		if (_pMainVtxElems->surfaceFlags & IsoVertexElements::GEN_TEX_COORDS)
+		if (_nSurfaceFlags & IsoVertexElements::GEN_TEX_COORDS)
 		{
 			// Generate optional texture coordinates
 			// TODO: Implementation
@@ -1225,16 +1087,6 @@ namespace Ogre
 			pVtxElems->texcoords[nIsoVertexIdx][1] = pVtxElems->positions[nIsoVertexIdx].y;
 			// TODO: I think this is wrong
 			//mIsoVertexTexCoords[isoVertex][2] = mIsoVertexPositions[isoVertex].z;
-		}
-	}
-
-	IsoSurfaceRenderable * IsoSurfaceBuilder::createIsoSurface( MetaFragment::Container * pMWF, const String & sName /*= ""*/ ) const
-	{
-		{ OGRE_LOCK_MUTEX(mMutex)
-			oht_assert_threadmodel(ThrMdl_Single);
-			IsoSurfaceRenderable * pISR = new IsoSurfaceRenderable(_pVtxDecl, pMWF, _nLODCount, _fMaxPixelError, sName);
-			pISR->setCastShadows(true);
-			return pISR;
 		}
 	}
 
@@ -1249,21 +1101,21 @@ namespace Ogre
 		)
 			return;
 
-		if ((_pMainVtxElems->surfaceFlags & IsoVertexElements::GEN_NORMALS) && (_enNormalType != NORMAL_GRADIENT))
+		if ((_nSurfaceFlags & IsoVertexElements::GEN_NORMALS) && (_pCurrentChannelParams->normalsType != NT_Gradient))
 		{
 			IsoFixVec3 normal = 
 				(_pMainVtxElems->positions[isoTriangle.vertices[1]] - _pMainVtxElems->positions[isoTriangle.vertices[0]]) 
 				%
 				(_pMainVtxElems->positions[isoTriangle.vertices[2]] - _pMainVtxElems->positions[isoTriangle.vertices[0]]);
 
-			switch (_enNormalType)
+			switch (_pCurrentChannelParams->normalsType)
 			{
-			case NORMAL_WEIGHTED_AVERAGE:
+			case NT_WeightedAverage:
 				// TODO: Kludge / hack / ugly
 				if (LENGTH(normal) > Real(0))
 					normal = NORMALIZE(normal) / LENGTH(normal);
 				break;
-			case NORMAL_AVERAGE:
+			case NT_Average:
 				normal = NORMALIZE(normal);
 				break;
 			}
@@ -1510,13 +1362,13 @@ namespace Ogre
 			vtxelem.position.y = Real(pt.y) * fVertScale;
 			vtxelem.position.z = Real(pt.z) * fVertScale;
 
-			if (_pMainVtxElems->surfaceFlags & IsoVertexElements::GEN_NORMALS)
+			if (_nSurfaceFlags & IsoVertexElements::GEN_NORMALS)
 				vtxelem.normal = _pMainVtxElems->normals[*i];
 
-			if (_pMainVtxElems->surfaceFlags & IsoVertexElements::GEN_VERTEX_COLOURS)
+			if (_nSurfaceFlags & IsoVertexElements::GEN_VERTEX_COLOURS)
 				vtxelem.setColour(_pMainVtxElems->colours[*i]);
 
-			if (_pMainVtxElems->surfaceFlags & IsoVertexElements::GEN_TEX_COORDS)
+			if (_nSurfaceFlags & IsoVertexElements::GEN_TEX_COORDS)
 			{
 				vtxelem.texcoord.x = _pMainVtxElems->texcoords[*i][0];
 				vtxelem.texcoord.y = _pMainVtxElems->texcoords[*i][1];
@@ -1815,8 +1667,8 @@ namespace Ogre
 			mcc;					// Transition corner points on each side corner
 	}
 
-	IsoSurfaceBuilder::MainVertexElements::MainVertexElements( const CubeDataRegionDescriptor & dgtmpl, const int nSurfaceFlags )
-		: IsoVertexElements(computeTotalElements(dgtmpl), nSurfaceFlags), 
+	IsoSurfaceBuilder::MainVertexElements::MainVertexElements( const CubeDataRegionDescriptor & dgtmpl )
+		: IsoVertexElements(computeTotalElements(dgtmpl)),
 			_cubemeta(dgtmpl), 
 			remappings(new IsoVertexIndex[computeTotalElements(dgtmpl)]),
 			trmappings(new IsoVertexIndex[computeTotalElements(dgtmpl)]),

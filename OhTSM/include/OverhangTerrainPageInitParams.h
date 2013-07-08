@@ -36,10 +36,16 @@ Adapted by Jonathan Neufeld (http://www.extollit.com) 2011-2013 for OverhangTerr
 
 #include <vector>
 
+#include "OverhangTerrainPrerequisites.h"
+
+#include "ChannelIndex.h"
 #include "OverhangTerrainOptions.h"
 
 namespace Ogre
 {
+	/// The static channel identifier for heightmap-based terrain surfaces, voxels, and meta-objects
+	static const Channel::Ident TERRAIN_ENTITY_CHANNEL(0);
+
 	/// A storage class for meta-information necessary to populate a page of terrain data with renderable content
 	class PageInitParams
 	{
@@ -51,10 +57,6 @@ namespace Ogre
 			Real * heightmap;
 			/// The tile-offset in the 2D-array of terrain-tiles per page
 			size_t vx0, vy0;
-			/// The colour heightmap (if applicable)
-			ColourValue * colourmap;
-			/// The material to use for this terrain-tile
-			MaterialPtr material;
 		};
 
 		/// Heightmap for the page which should be voxelized and transformed into extracted isosurfaces
@@ -79,29 +81,64 @@ namespace Ogre
 		@param pageY Y-component of the 2D page index */
 		PageInitParams (const OverhangTerrainOptions & options, const int16 pageX, const int16 pageY);
 
-		/// @returns The material to use for the terrain tile at the specified 2D array offset
-		inline const MaterialPtr & material (const size_t i, const size_t j) const
-			{ return (*_pMaterials)[getTileIndex(i, j)]; }
-		/// @returns The material to use for the terrain tile at the specified 2D array offset
-		inline MaterialPtr & material (const size_t i, const size_t j)
-			{ return (*_pMaterials)[getTileIndex(i, j)]; }
+		/** Describes the parameters for a particular channel */
+		class ChannelParams
+		{
+		private:
+			/// Optional materials to use per terrain-tile in a page
+			std::vector< MaterialPtr > * _pMaterials;
+			/// Optional colour fields to use per terrain-tile in a page
+			std::vector< ColourValue * > * _pColourMaps;
 
-		/// @returns The field of colours to use for the terrain tile at the specified 2D array offset
-		inline const ColourValue * colourmap (const size_t i, const size_t j) const
-			{ return (*_pColourMaps)[getTileIndex(i, j)]; }
-		/// @returns The field of colours to use for the terrain tile at the specified 2D array offset
-		inline ColourValue * colourmap (const size_t i, const size_t j)
-			{ return (*_pColourMaps)[getTileIndex(i, j)]; }
+			/// Number of tiles that occur along one axis of a page and number of vertices that occur along one axis of a terrain tile
+			const size_t _nTilesPerPageSide, _nVertsPerTileSide;
+
+			/** Creates the colour maps for the channel
+			@param nTilesPerPageSide Number of tiles that occur along one axis of a page
+			@param nVertsPerTileSide Number of vertices that occur along one axis of a terrain tile
+			@param chanopts The channel-specific options */
+			static std::vector< ColourValue * > * createColourMap(const size_t nTilesPerPageSide, const size_t nVertsPerTileSide, const OverhangTerrainOptions::ChannelOptions & chanopts);
+
+			/// @returns Converts the specified 2D array index of terrain-tile in page to a scalar index value
+			inline size_t getTileIndex (const size_t i, const size_t j) const
+				{ return j * _nTilesPerPageSide + i;	}
+
+		public:
+			ChannelParams(const size_t nTilesPerPageSide, const size_t nVertsPerTileSide, const OverhangTerrainOptions::ChannelOptions & chanopts);
+			~ChannelParams();
+
+			/// @returns The material to use for the terrain tile at the specified 2D array offset
+			inline const MaterialPtr & material (const size_t i, const size_t j) const
+				{ return (*_pMaterials)[getTileIndex(i, j)]; }
+			/// @returns The material to use for the terrain tile at the specified 2D array offset
+			inline MaterialPtr & material (const size_t i, const size_t j)
+				{ return (*_pMaterials)[getTileIndex(i, j)]; }
+
+			/// @returns The field of colours to use for the terrain tile at the specified 2D array offset
+			inline const ColourValue * colourmap (const size_t i, const size_t j) const
+				{ return (*_pColourMaps)[getTileIndex(i, j)]; }
+			/// @returns The field of colours to use for the terrain tile at the specified 2D array offset
+			inline ColourValue * colourmap (const size_t i, const size_t j)
+				{ return (*_pColourMaps)[getTileIndex(i, j)]; }
+
+			/// @returns True if materials-per-tile are available
+			inline bool isMaterials () const { return _pMaterials != NULL; }
+			/// @returns True if colours-per-tile are available
+			inline bool isColourMap () const { return _pColourMaps != NULL; }
+
+			friend StreamSerialiser & operator >> (StreamSerialiser & ins, PageInitParams::ChannelParams & params);
+			friend StreamSerialiser & operator << (StreamSerialiser & outs, const PageInitParams::ChannelParams & params);
+		};
+
+		/// Retrieves the channel parameters according to the specified channel identifier
+		inline ChannelParams & channel(const Channel::Ident channel) { return _channels[channel]; }
+		/// Retrieves the channel parameters according to the specified channel identifier
+		inline const ChannelParams & channel(const Channel::Ident channel) const { return _channels[channel]; }
 
 		/// @returns The parameters pertinent to the terrain tile at the specified 2D array offset
 		TileParams getTile (const size_t i, const size_t j);
 		/// @returns The parameters pertinent to the terrain tile at the specified 2D array offset
 		const TileParams getTile (const size_t i, const size_t j) const;
-
-		/// @returns True if materials-per-tile are available
-		inline bool isMaterials () const { return _pMaterials != NULL; }
-		/// @returns True if colours-per-tile are available
-		inline bool isColourMap () const { return _pColourMaps != NULL; }
 
 		/// Stores these parameters to the stream excluding materials
 		void operator << (StreamSerialiser & ins);
@@ -111,21 +148,49 @@ namespace Ogre
 		~PageInitParams();
 
 	private:
-		/// Optional materials to use per terrain-tile in a page
-		std::vector< MaterialPtr > * _pMaterials;
-		/// Optional colour fields to use per terrain-tile in a page
-		std::vector< ColourValue * > * _pColourMaps;
-
 		/** Populates the object with heightmap, colour, material etc. data for populating a terrain-tile
 		@param params Will receive initialization details that can be used to populate a terrain-tile
 		@param i The horizontal component of the 2D index of the terrain-tile the parameters are intended for
 		@param j The vertical component of the 2D index of the terrain-tile the parameters are intended for */
 		void populateTileParams (TileParams & params, const size_t i, const size_t j) const;
 
-		/// @returns Converts the specified 2D array index of terrain-tile in page to a scalar index value
-		inline size_t getTileIndex (const size_t i, const size_t j) const
-			{ return j * countTilesPerPageSide + i;	}
+		/// Channel::Index factory for creating ChannelParams objects
+		class ChannelParamsFactory
+		{
+		private:
+			/// Top-level configuration options
+			const OverhangTerrainOptions _options;
+			/// Number of tiles that occur along one axis of a page and number of vertices that occur along one axis of a terrain tile
+			const size_t countTilesPerPageSide, countVerticesPerTileSide;
+
+		public:
+			/**
+			@params options Top-level configuration options
+			*/
+			ChannelParamsFactory(const OverhangTerrainOptions & options)
+				: _options(options), countTilesPerPageSide(options.getTilesPerPage()), countVerticesPerTileSide(options.tileSize) {}
+
+			/// Create an instance of the specified channel
+			ChannelParams * instantiate (const Channel::Ident channel)
+			{
+				const OverhangTerrainOptions::ChannelOptions & chanopts = _options.channels[channel];
+				return new ChannelParams(countTilesPerPageSide, countVerticesPerTileSide, chanopts);
+			}
+		};
+
+		// Top-level configuration options
+		const OverhangTerrainOptions _options;
+
+		typedef Channel::Index< ChannelParams, ChannelParamsFactory > ChannelIndex;
+
+		/// The set of channel-specific parameters
+		ChannelIndex _channels;
 	};
+
+	/// Stores these parameters to the stream excluding materials
+	StreamSerialiser & operator >> (StreamSerialiser & ins, PageInitParams::ChannelParams & params);
+	/// Reads parameters from the stream excluding materials
+	StreamSerialiser & operator << (StreamSerialiser & outs, const PageInitParams::ChannelParams & params);
 }
 
 #endif

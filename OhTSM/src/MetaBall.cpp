@@ -67,11 +67,10 @@ namespace Ogre
 			inline
 			Real getFieldStrength (const signed int x, const signed int y, const signed int z) const
 			{
-				Vector3 v = dg->getBoxSize().getMinimum();
+				Vector3 v = dg->getBoundingBox().getMinimum();
 				
 				v += Vector3((Real)x, (Real)y, (Real)z) * dg->getGridScale();
 				v -= self->_pos;
-				v += dg->getPosition();
 
 				Real r2 = Real(v.squaredLength() / (2.0 * self->_sphere.getRadius()*self->_sphere.getRadius()));
 
@@ -119,6 +118,83 @@ namespace Ogre
 
 		_sphere.setRadius(nRadius);
 		_sphere.setCenter(_pos);
+	}
+
+	void MetaBall::intersection( AxisAlignedBox & bbox ) const
+	{
+		Vector3
+			bb0 = bbox.getMinimum(),
+			bbN = bbox.getMaximum();
+
+		const Real r = _sphere.getRadius();
+		const Vector3
+			d0 = _pos - bb0,
+			dN = _pos - bbN;
+
+		if (d0.x < -r || d0.y < -r || d0.z < -r || dN.x > +r || dN.y > +r || dN.z > +r)
+		{
+			bbox.setNull();
+			return;
+		}
+
+		const Real r2 = Math::Sqr(r);
+		Real
+			* bb0a = bb0.ptr(),
+			* bbNa = bbN.ptr();
+
+		const Real * d0a = d0.ptr(),
+			* pa = _pos.ptr();
+
+		for (unsigned int c = 0; c < 3; ++c)
+		{
+			Real q;
+			if (d0a[c] < 0)
+				q = r2 - Math::Sqr(d0a[c]);
+			else
+				q = r2;
+
+			q = sqrt(q);
+
+			const unsigned int
+				c1 = (c+1) % 3,
+				c2 = (c+2) % 3;
+
+			bb0a[c1] = std::max(bb0a[c1], pa[c1] - q);
+			bbNa[c1] = std::min(bbNa[c1], pa[c1] + q);
+			bb0a[c2] = std::max(bb0a[c2], pa[c2] - q);
+			bbNa[c2] = std::min(bbNa[c2], pa[c2] + q);
+		}
+
+		const Real * dNa = dN.ptr();
+
+		for (unsigned int c = 0; c < 3; ++c)
+		{
+			Real q;
+			if (dNa[c] > 0)
+				q = r2 - Math::Sqr(dNa[c]);
+			else
+				q = r2;
+
+			q = sqrt(q);
+
+			const unsigned int
+				c1 = (c+1) % 3,
+				c2 = (c+2) % 3;
+
+			bb0a[c1] = std::max(bb0a[c1], pa[c1] - q);
+			bbNa[c1] = std::min(bbNa[c1], pa[c1] + q);
+			bb0a[c2] = std::max(bb0a[c2], pa[c2] - q);
+			bbNa[c2] = std::min(bbNa[c2], pa[c2] + q);
+		}
+
+		if (
+			Math::RealEqual(bb0.x - bbN.x, 0) ||
+			Math::RealEqual(bb0.y - bbN.y, 0) ||
+			Math::RealEqual(bb0.z - bbN.z, 0)
+		)
+			bbox.setNull();
+		else
+			bbox.setExtents(bb0, bbN);
 	}
 
 }

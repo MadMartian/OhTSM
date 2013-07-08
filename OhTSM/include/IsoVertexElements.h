@@ -97,9 +97,6 @@ namespace Ogre
 		/// Total number of elements
 		const size_t count;
 
-		/// The surface flags relevant to this
-		const char surfaceFlags;
-
 		// Maps hardware buffer indices to iso-vertex indices
 		IsoVertexVector vertexShipment;
 
@@ -111,9 +108,8 @@ namespace Ogre
 		/** Creates the iso vertex arrays.
 		@remarks
 			The function calls the abstract function getNumIsoVertices() to get the length
-			of the arrays to be created. Arrays are created according to the flags specified in
-			IsoSurface::mSurfaceFlags. */
-		IsoVertexElements(const size_t nNumElements, const char nSurfaceFlags);
+			of the arrays to be created. */
+		IsoVertexElements(const size_t nNumElements);
 		~IsoVertexElements();
 
 		/// Clears the indices member and clears the vertex shipment and triangle queues

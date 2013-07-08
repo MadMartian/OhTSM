@@ -79,10 +79,10 @@ namespace Ogre
 		@param pCubeDataRegion The 3D voxel cube region
 		@param pInterfUnique Read/write access to the 3D voxel grid
 		@param vx0 Minimal vertex-space x-coordinate of the cube region
-		@param vxN Maximal vertex-space x-coordinate of the cube region
 		@param vy0 Minimal vertex-space y-coordinate of the cube region
-		@param vyN Maximal vertex-space y-coordinate of the cube region
 		@param vz0 Minimal vertex-space z-coordinate of the cube region
+		@param vxN Maximal vertex-space x-coordinate of the cube region
+		@param vyN Maximal vertex-space y-coordinate of the cube region
 		@param vzN Maximal vertex-space z-coordinate of the cube region */
 		OverhangTerrainMetaCube (
 			Voxel::CubeDataRegion * pCubeDataRegion,

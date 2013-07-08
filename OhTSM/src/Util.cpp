@@ -36,6 +36,8 @@ Torus Knot Software Ltd.
 #include <string>
 #include <limits>
 
+#include "OverhangTerrainManager.h"
+
 unsigned long long computeCRCImpl( const unsigned long long * pData, const size_t nQWords )
 {
 	unsigned long long v = 0;
@@ -53,4 +55,62 @@ namespace Ogre
 	{
 		static const Real RATIONAL_ERROR = powf(10.0f, -static_cast< float > (std::numeric_limits< Real >::digits10) + 1.0f);
 	}
+
+	std::pair< bool, Real > BBox2D::intersects( const Ray & ray, const OverhangCoordinateSpace ocs /*= OCS_Terrain*/ ) const
+	{
+		Vector3
+			p = ray.getOrigin(),
+			d = ray.getDirection();
+
+		OverhangTerrainManager::transformSpace(ocs, ALIGN_X_Z, OCS_Terrain, p);
+		OverhangTerrainManager::transformSpace(ocs, ALIGN_X_Z, OCS_Terrain, d);
+
+		const Real
+			mx0 = (minimum.x - p.x) / d.x,
+			mxN = (maximum.x - p.x) / d.x,
+			my0 = (minimum.y - p.y) / d.y,
+			myN = (maximum.y - p.y) / d.y;
+
+		const Real
+			x0_y = d.y * mx0,
+			xN_y = d.y * mxN,
+			y0_x = d.x * my0,
+			yN_x = d.x * myN;
+
+		return
+			std::pair< bool, Real > (
+				(x0_y >= minimum.y && x0_y <= maximum.y && mx0 >= 0) ||
+				(xN_y >= minimum.y && xN_y <= maximum.y && mxN >= 0) ||
+				(y0_x >= minimum.x && y0_x <= maximum.x && my0 >= 0) ||
+				(yN_x >= minimum.x && yN_x <= maximum.x && myN >= 0),
+
+				std::min(mx0, std::min(mxN, std::min(my0, myN)))
+			);
+	}
+
+	bool BBox2D::intersects( const AxisAlignedBox & bbox, const OverhangCoordinateSpace ocs /*= OCS_Terrain*/ ) const
+	{
+		Vector3
+			p0 = bbox.getMinimum(),
+			pN = bbox.getMaximum();
+
+		OverhangTerrainManager::transformSpace(ocs, ALIGN_X_Z, OCS_Terrain, p0);
+		OverhangTerrainManager::transformSpace(ocs, ALIGN_X_Z, OCS_Terrain, pN);
+
+		return
+			(maximum.x >= p0.x && maximum.y >= p0.y) &&
+			(minimum.x <= pN.x && minimum.y <= pN.y);
+	}
+
+	BBox2D::BBox2D()
+	{
+
+	}
+
+	BBox2D::BBox2D( const Vector2 & minimum, const Vector2 & maximum )
+		: minimum(minimum), maximum(maximum)
+	{
+
+	}
+
 }
