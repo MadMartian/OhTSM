@@ -66,8 +66,8 @@ namespace Ogre
 			unsigned char cEnumTemp;
 			const ChannelOptions & opts = channels[*i];
 			stream.write(&opts.flipNormals);
-			const String
-				sMatName = opts.material->getName(),
+			const String 
+				sMatName = opts.material->getName(), 
 				sMatGroup = opts.material->getGroup();
 			stream.write(&sMatGroup);
 			stream.write(&sMatName);
@@ -97,10 +97,10 @@ namespace Ogre
 	}
 
 
-	OverhangTerrainOptions::ChannelOptions::ChannelOptions()
-	:	materialPerTile(false),
-		normals(NT_Gradient),
-		flipNormals(false),
+	OverhangTerrainOptions::ChannelOptions::ChannelOptions() 
+	:	materialPerTile(false), 
+		normals(NT_Gradient), 
+		flipNormals(false), 
 		transitionCellWidthRatio(0.5f)
 	{
 	}

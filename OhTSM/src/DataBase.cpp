@@ -36,11 +36,11 @@ namespace Ogre
 			ty( (nVRFlags & VRF_TexCoords) != 0 ? new unsigned char[nCount] : NULL )
 		{}
 
-		DataBasePool::LeaseEx::LeaseEx( const char * szMsg )
+		DataBasePool::LeaseEx::LeaseEx( const char * szMsg ) 
 			: std::exception(szMsg)
 		{}
 
-		DataBasePool::DataBasePool( const size_t nBucketElementCount, const size_t nVRFlags, const size_t nInitialPoolCount /*= 4*/, const size_t nGrowBy /*= 1*/ )
+		DataBasePool::DataBasePool( const size_t nBucketElementCount, const size_t nVRFlags, const size_t nInitialPoolCount /*= 4*/, const size_t nGrowBy /*= 1*/ ) 
 			: _nVRFlags(nVRFlags), _nGrowBy(nGrowBy), _nBucketElementCount(nBucketElementCount)
 		{
 			OgreAssert(nGrowBy > 0, "Grow-by must be at least one");

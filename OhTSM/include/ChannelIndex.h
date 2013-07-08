@@ -15,7 +15,7 @@ namespace Ogre
 	namespace Channel
 	{
 		/** Wrapper for a channel identifier */
-		static const
+		static const 
 		class Ident
 		{
 		private:
@@ -46,7 +46,7 @@ namespace Ogre
 		StreamSerialiser & operator >> ( StreamSerialiser & ins, Ident & channel );
 
 		/** Defines a set of channels */
-		class Descriptor
+		class Descriptor 
 		{
 		public:
 			// The number of channels in the set
@@ -123,7 +123,7 @@ namespace Ogre
 		private:
 			typedef std::vector< T * > VectorType;
 
-			mutable Loader _loader;
+			mutable Loader _loader;				
 			mutable VectorType _vec;
 
 		protected:
@@ -252,9 +252,9 @@ namespace Ogre
 				*/
 				template_Iterator (Iter begin, Iter end)
 					: _0 (begin), _N(end), _c(0)
-				{
+				{ 
 					OHT_CR_INIT();
-					process();
+					process(); 
 				}
 				template_Iterator (Iter && move)
 					: _i(move._i), _0(move._0), _N(move._N), _c(move._c), _current(move._current), OHT_CR_COPY(move) {}
@@ -364,8 +364,8 @@ namespace Ogre
 				to the descriptor
 			@param ident The channel identifier to retrieve an associated element of from this index
 			@returns The element associated at the specified identifier in the index */
-			T & operator [] (const Ident ident)
-			{
+			T & operator [] (const Ident ident) 
+			{ 
 				if (ident >= _vec.size())
 					throw NoSuchElementEx("No such element at specified index");
 
@@ -373,7 +373,7 @@ namespace Ogre
 				if (r == NULL)
 					r = _loader.instantiate(ident);
 
-				return *r;
+				return *r; 
 			}
 
 			/** Lazy retrieval of the element in the index associated with the specified channel
@@ -385,8 +385,8 @@ namespace Ogre
 				to the descriptor
 			@param ident The channel identifier to retrieve an associated element of from this index
 			@returns The element associated at the specified identifier in the index */
-			const T & operator [] (const Ident ident) const
-			{
+			const T & operator [] (const Ident ident) const 
+			{ 
 				if (ident >= _vec.size())
 					throw NoSuchElementEx("No such element at specified index");
 
@@ -394,7 +394,7 @@ namespace Ogre
 				if (r == NULL)
 					r = _loader.instantiate(ident);
 
-				return *r;
+				return *r; 
 			}
 
 			Index & operator = (const Index & other)
@@ -415,3 +415,5 @@ namespace Ogre
 }
 
 #endif
+
+

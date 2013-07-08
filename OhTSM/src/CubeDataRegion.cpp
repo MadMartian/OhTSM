@@ -282,8 +282,8 @@ namespace Ogre
 		: template_DataAccessor(static_cast< template_DataAccessor && > (move)) 
 		{}
 
-		CompressedDataBase::CompressedDataBase( const size_t nVRFlags )
-		:	gradfield(nVRFlags & VRF_Gradient ? new GradientChannels : NULL),
+		CompressedDataBase::CompressedDataBase( const size_t nVRFlags ) 
+		:	gradfield(nVRFlags & VRF_Gradient ? new GradientChannels : NULL), 
 			colors(nVRFlags & VRF_Colours ? new ColorChannels : NULL),
 			texcoords(nVRFlags & VRF_TexCoords ? new TexCoordChannels : NULL)
 		{

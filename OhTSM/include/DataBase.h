@@ -26,7 +26,7 @@ namespace Ogre
 			virtual ~DataBase();
 		};
 
-		/** A memory pool pattern for DataBase instances to eliminate allocation/deallocation
+		/** A memory pool pattern for DataBase instances to eliminate allocation/deallocation 
 			and improve performance */
 		class _OverhangTerrainPluginExport DataBasePool
 		{
@@ -52,13 +52,13 @@ namespace Ogre
 			/** Exception class used to enforce consistency, thrown from destructor when objects are still
 				checked-out of the pool and thrown during retire if the specified instance was not previously
 				checked-out. */
-			class LeaseEx : public std::exception
+			class LeaseEx : public std::exception 
 			{
 			public:
 				LeaseEx(const char * szMsg);
 			};
 
-			/**
+			/** 
 			@param nBucketElementCount voxel count per DataBase instance
 			@param nVRFlags The voxel region flags used to create voxel regions in this factory
 			@param nInitialPoolCount The initial number of database objects to allocate immediately available for checkout

@@ -82,13 +82,13 @@ namespace Ogre
 			/// Number of levels of details supported for renderables of this channel
 			unsigned short clod;
 			/// Maximum error in pixels for renderables of this channel
-			Real maxPixelError;
+			Real maxPixelError; 
 			/// Flip normals of these surfaces
 			bool flipNormals;
 			/// The method used for normal generation on surfaces of this channel
 			NormalsType normalsType;
 
-			/**
+			/** 
 			@param fTCWidthRatio The ratio width of a normal cell that makes-up the width of a transition cell
 			@param nSurfaceFlags Flags determining what kind of vertex properties are supported by the hardware buffer for this channel
 			@param nLODCount Number of levels of details supported for renderables of this channel
@@ -97,11 +97,11 @@ namespace Ogre
 			@param enNormalType The method used for normal generation on surfaces of this channel
 			*/
 			ChannelParameters(
-				const Real fTCWidthRatio = 0.5f,
-				const size_t nSurfaceFlags = 0,
-				const unsigned short nLODCount = 5,
-				const Real fMaxPixelError = 8,
-				const bool bFlipNormals = false,
+				const Real fTCWidthRatio = 0.5f, 
+				const size_t nSurfaceFlags = 0, 
+				const unsigned short nLODCount = 5, 
+				const Real fMaxPixelError = 8, 
+				const bool bFlipNormals = false, 
 				const NormalsType enNormalType = NT_None
 			);
 			~ChannelParameters();

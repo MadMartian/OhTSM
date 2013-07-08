@@ -73,8 +73,8 @@ namespace Ogre
 		void linkUpAllSurfaces();
 		
 		/** Links-up meta-fragments in this terrain-tile with corresponding ones in another one
-		@remarks Links-up all meta-fragments in this terrain-tile of the specified channel that
-			correspond to meta-fragments in the specified terrain-tile of the same channel according
+		@remarks Links-up all meta-fragments in this terrain-tile of the specified channel that 
+			correspond to meta-fragments in the specified terrain-tile of the same channel according 
 			to Y-level.
 		@param ennNeighbor Identifies where the specified terrain-tile occurs adjacent to this one
 		@param pNeighborTile The neighbor tile to which meta-fragments here-in will be linked
@@ -153,7 +153,7 @@ namespace Ogre
 		{
 			oht_assert_threadmodel(ThrMdl_Single);
 			Channel::Index< MetaFragMap >::const_iterator j = _index2mapMF.find(channel);
-
+			
 			return j == _index2mapMF.end() ? 0 : j->value->size();
 		}
 
@@ -188,21 +188,21 @@ namespace Ogre
 		@remarks Traverses meta-fragments in the page starting at this terrain-tile.  When the ray traversal crosses this terrain-tile's 
 			boundaries it selects the adjacent terrain-tile and recursively traverses that one calling this method again if the cascade flag 
 			is set.  The result of the query is stored in the specified result parameter and method return value.
-			The search would complete if either the ray hit something or the distance limit of the parameters object was reached or the page
+			The search would complete if either the ray hit something or the distance limit of the parameters object was reached or the page 
 			boundaries were reached.  The query is limited to the channels specified in the parameters object.  Must be called from the main thread.
 		@param result The result of the ray query is stored here
 		@param rayPageRelTerrainSpace The ray in terrain-space (i.e. OverhangCoordinateSpace::OCS_Terrain) relative to the page center
-		@param params Parameters influencing the ray query including the set of channels to restrict the query to and the maximum length of
-			the ray to search treating the ray as a line segment to eliminate the inevitable infinite search for true orthodox rays or
+		@param params Parameters influencing the ray query including the set of channels to restrict the query to and the maximum length of 
+			the ray to search treating the ray as a line segment to eliminate the inevitable infinite search for true orthodox rays or 
 			specify zero for no limit
 		@param cascadeToNeighbours Whether or not to recursively cascade the search operation to neighboring terrain-tiles in the same page 
 			or to terminate after the terrain-tile borders have been reached
 		@returns True if the intersection passed and a triangle in a surface was intersected by the ray, false if nothing was hit
 		*/
-		bool rayIntersects(
+		bool rayIntersects( 
 			OverhangTerrainManager::RayResult & result, 
 			const Ray& rayPageRelTerrainSpace, 
-			const OverhangTerrainManager::RayQueryParams & params,
+			const OverhangTerrainManager::RayQueryParams & params, 
 			bool cascadeToNeighbours = false
 		) const;
 
@@ -219,9 +219,9 @@ namespace Ogre
 
 		/** Computes the bounding region of a voxel cube in some space given a Y-level based on this terrain-tile's position
 		@param yl The Y-level to influence the bounds
-		@param encsTo The coordinate space to return the bounds in
+		@param encsTo The coordinate space to return the bounds in 
 		@returns A bounding box of the region in the specified coordinate space relative to the page as a multiple of the specified Y-level */
-		AxisAlignedBox getYLevelBounds (const YLevel yl, const OverhangCoordinateSpace encsTo = OCS_Terrain) const;
+ 		AxisAlignedBox getYLevelBounds (const YLevel yl, const OverhangCoordinateSpace encsTo = OCS_Terrain) const;
 		
 		/// Creates or retrieves a meta-fragment in the specified channel of this terrain-tile at the specified Y-level which is analogous to a vertical coordinate
 		MetaFragment::Container * acquireMetaWorldFragment (const Channel::Ident channel, const YLevel yl);
@@ -330,34 +330,34 @@ namespace Ogre
 		@param result This will be populated with the results of the query
 		@param rayPageRelTerrainSpace The ray we're searching with in terrain-space (OverhangCoordinateSpace::OCS_Terrain) relative to the page center
 		@param tile Ray offset where the ray touches the first meta-fragment in this terrain-tile
-		@param params Parameters influencing the ray query including the set of channels to restrict the query to and the maximum length of
-			the ray to search treating the ray as a line segment to eliminate the inevitable infinite search for true orthodox rays or
+		@param params Parameters influencing the ray query including the set of channels to restrict the query to and the maximum length of 
+			the ray to search treating the ray as a line segment to eliminate the inevitable infinite search for true orthodox rays or 
 			specify zero for no limit
 		@returns A pair of values, the first being a boolean indicating whether the ray intersected a triangle or not, and the second being the distance 
 			in world-space from the point where the ray crossed this terrain-tile's border to the point of triangle intersection.
 		*/
-		std::pair< bool, Real > rayIntersectsMetaWorld(
+		std::pair< bool, Real > rayIntersectsMetaWorld( 
 			OverhangTerrainManager::RayResult & result, 
 			const Ray & rayPageRelTerrainSpace, 
 			const Real tile, 
-			const OverhangTerrainManager::RayQueryParams & params
+			const OverhangTerrainManager::RayQueryParams & params 
 		) const;
 
-		void rayQueryWalkCell(
-			OverhangTerrainManager::RayResult &result,
-			RayCellWalk &walker,
-			const MetaFragMap & mapMF,
-			const YLevel yl,
-			const YLevel yl0,
-			const AxisAlignedBox & bboxOrigin,
-			const Ray &rayTileCubeIntersectRelDataGridSpace,
-			const int nCellsPerCube
+		void rayQueryWalkCell( 
+			OverhangTerrainManager::RayResult &result, 
+			RayCellWalk &walker, 
+			const MetaFragMap & mapMF, 
+			const YLevel yl, 
+			const YLevel yl0, 
+			const AxisAlignedBox & bboxOrigin, 
+			const Ray &rayTileCubeIntersectRelDataGridSpace, 
+			const int nCellsPerCube 
 		) const;
 
 	protected:
 
 		/** Creates or retrieves, prepares, initializes and updates the 3D voxel grids of the meta-fragments of the specified channel affected by the metaobject.
-		@remarks The specified metaobject is added to each of the meta-fragments it covers in the specifid channel of this terrain-tile.
+		@remarks The specified metaobject is added to each of the meta-fragments it covers in the specifid channel of this terrain-tile.  
 			Meta-fragments are created, prepared, and initialized as necessary to accommodate the metaobject.
 			The 3D voxel grids are updated for all of these meta-fragments to reflect the new metaobject.
 		@param channel The channel to propagate the meta-object into

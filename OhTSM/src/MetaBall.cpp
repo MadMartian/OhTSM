@@ -138,7 +138,7 @@ namespace Ogre
 		}
 
 		const Real r2 = Math::Sqr(r);
-		Real
+		Real 
 			* bb0a = bb0.ptr(),
 			* bbNa = bbN.ptr();
 
@@ -155,7 +155,7 @@ namespace Ogre
 
 			q = sqrt(q);
 
-			const unsigned int
+			const unsigned int 
 				c1 = (c+1) % 3,
 				c2 = (c+2) % 3;
 
@@ -177,7 +177,7 @@ namespace Ogre
 
 			q = sqrt(q);
 
-			const unsigned int
+			const unsigned int 
 				c1 = (c+1) % 3,
 				c2 = (c+2) % 3;
 

@@ -661,7 +661,7 @@ namespace Ogre
 		);
 	}
 
-	class BBox2D
+	class BBox2D 
 	{
 	public:
 		Vector2 minimum, maximum;

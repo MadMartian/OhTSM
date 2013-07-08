@@ -171,10 +171,10 @@ namespace Ogre
 	}
 
 	IsoSurfaceBuilder::IsoSurfaceBuilder(
-		const CubeDataRegionDescriptor & cubemeta,
+		const CubeDataRegionDescriptor & cubemeta, 
 		const Channel::Index< ChannelParameters > & chanparams
 	)
-	: 	_cubemeta(cubemeta),
+  	: 	_cubemeta(cubemeta), 
 		_chanparams(chanparams),
 		_vRegularCases(new unsigned char [cubemeta.cellcount]),
 		_pCurrentChannelParams(NULL)
@@ -214,14 +214,14 @@ namespace Ogre
 		return txTCHalf2Full;
 	}
 
-	IsoSurfaceBuilder::ChannelParameters::ChannelParameters(
-		const Real fTCWidthRatio,
-		const size_t nSurfaceFlags,
-		const unsigned short nLODCount,
-		const Real fMaxPixelError,
-		const bool bFlipNormals,
-		const NormalsType enNormalType
-	)
+	IsoSurfaceBuilder::ChannelParameters::ChannelParameters( 
+		const Real fTCWidthRatio, 
+		const size_t nSurfaceFlags, 
+		const unsigned short nLODCount, 
+		const Real fMaxPixelError, 
+		const bool bFlipNormals, 
+		const NormalsType enNormalType 
+	) 
 		:	_txTCHalf2Full(createTransitionCellTranslators(nLODCount, fTCWidthRatio)),
 			surfaceFlags(nSurfaceFlags),
 			clod(nLODCount),
@@ -248,6 +248,14 @@ namespace Ogre
 			delete _pMainVtxElems;
 
 		}
+	}
+	
+	size_t IsoSurfaceBuilder::genSurfaceFlags( const OverhangTerrainOptions::ChannelOptions & chanopts )
+	{
+		return 
+			(chanopts.normals != NT_None ? IsoVertexElements::GEN_NORMALS : 0) |
+			(chanopts.voxelRegionFlags & VRF_Colours ? IsoVertexElements::GEN_VERTEX_COLOURS : 0) |
+			(chanopts.voxelRegionFlags & VRF_TexCoords ? IsoVertexElements::GEN_TEX_COORDS : 0);
 	}
 
 	size_t IsoSurfaceBuilder::genSurfaceFlags( const OverhangTerrainOptions::ChannelOptions & chanopts )
@@ -321,8 +329,8 @@ namespace Ogre
 				DebugInfo(pISR),
 #endif // _DEBUG
 				pISR->getMetaWorldFragment() ->factory->channel,
-				pResolution, pDataGrid, pISR->getShadow(),
-				pISR->getMetaWorldFragment() ->factory->surfaceFlags,
+				pResolution, pDataGrid, pISR->getShadow(), 
+				pISR->getMetaWorldFragment() ->factory->surfaceFlags, 
 				enStitches, pISR->getVertexBufferCapacity(nLOD)
 			);
 			pISR->directlyPopulateBuffers(_pMainVtxElems, pResolution, enStitches, _pMainVtxElems->vertexShipment.size(), _pMainVtxElems->triangles.size() * 3);
@@ -895,7 +903,7 @@ namespace Ogre
 	#pragma optimize("gtpy", on)
 #endif
 	void IsoSurfaceBuilder::triangulateRegulars()
-	{
+ 	{
 		OgreAssert(_nLOD < _pCurrentChannelParams->clod, "Level of detail exceeds lowest allowed");
 		oht_assert_threadmodel(ThrMdl_Single);
 
@@ -1662,7 +1670,7 @@ namespace Ogre
 	}
 
 	IsoSurfaceBuilder::MainVertexElements::MainVertexElements( const CubeDataRegionDescriptor & dgtmpl )
-		: IsoVertexElements(computeTotalElements(dgtmpl)),
+		: IsoVertexElements(computeTotalElements(dgtmpl)), 
 			_cubemeta(dgtmpl), 
 			remappings(new IsoVertexIndex[computeTotalElements(dgtmpl)]),
 			trmappings(new IsoVertexIndex[computeTotalElements(dgtmpl)]),

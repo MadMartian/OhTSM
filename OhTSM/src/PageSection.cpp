@@ -51,12 +51,12 @@ namespace Ogre
 	const uint32 PageSection::CHUNK_ID = StreamSerialiser::makeIdentifier("OHPS");
 	const uint16 PageSection::VERSION = 1;
 
-	//-------------------------------------------------------------------------
-	PageSection::PageSection(const OverhangTerrainManager * mgr, MetaBaseFactory * const pMetaFactory, const Channel::Descriptor & descchann)
+    //-------------------------------------------------------------------------
+    PageSection::PageSection(const OverhangTerrainManager * mgr, MetaBaseFactory * const pMetaFactory, const Channel::Descriptor & descchann)
 		: manager(mgr), _nTileCount(mgr->options.getTilesPerPage()), _pFactory(pMetaFactory),
 		 _descchann(descchann), _vvListeners(descchann),
 		 _pScNode(NULL), _bDirty(false), _pPrivate(NULL), _pMetaHeightmap(NULL)
-	{
+    {
 		oht_assert_threadmodel(ThrMdl_Main);
 
 		_pPrivate = new PagePrivateNonthreaded(this);
@@ -77,31 +77,31 @@ namespace Ogre
 			{
 
 				// Create scene node for the tile and the TerrainRenderable
-				_vTiles[ i ].push_back( OGRE_NEW TerrainTile(i,j, descchann, _pPrivate, manager->options) );
-			}
-		}
+                _vTiles[ i ].push_back( OGRE_NEW TerrainTile(i,j, descchann, _pPrivate, manager->options) );
+            }
+        }
 
-		for ( size_t j = 0; j < _nTileCount; j++ )
-		{
-			for ( size_t i = 0; i < _nTileCount; i++ )
-			{
-				if ( j != _nTileCount - 1 )
-				{
-					_vTiles[ i ][ j ] -> initNeighbor( VonN_SOUTH, _vTiles[ i ][ j + 1 ] );
-					_vTiles[ i ][ j + 1 ] -> initNeighbor( VonN_NORTH, _vTiles[ i ][ j ] );
-				}
+        for ( size_t j = 0; j < _nTileCount; j++ )
+        {
+            for ( size_t i = 0; i < _nTileCount; i++ )
+            {
+                if ( j != _nTileCount - 1 )
+                {
+                    _vTiles[ i ][ j ] -> initNeighbor( VonN_SOUTH, _vTiles[ i ][ j + 1 ] );
+                    _vTiles[ i ][ j + 1 ] -> initNeighbor( VonN_NORTH, _vTiles[ i ][ j ] );
+                }
 
-				if ( i != _nTileCount - 1 )
-				{
-					_vTiles[ i ][ j ] -> initNeighbor( VonN_EAST, _vTiles[ i + 1 ][ j ] );
-					_vTiles[ i + 1 ][ j ] -> initNeighbor( VonN_WEST, _vTiles[ i ][ j ] );
-				}
-			}
-		}
-	}
-	//-------------------------------------------------------------------------
-	PageSection::~PageSection()
-	{
+                if ( i != _nTileCount - 1 )
+                {
+                    _vTiles[ i ][ j ] -> initNeighbor( VonN_EAST, _vTiles[ i + 1 ][ j ] );
+                    _vTiles[ i + 1 ][ j ] -> initNeighbor( VonN_WEST, _vTiles[ i ][ j ] );
+                }
+            }
+        }
+    }
+    //-------------------------------------------------------------------------
+    PageSection::~PageSection()
+    {
 		OHT_DBGTRACE("Delete Page " << this);
 		oht_assert_threadmodel(ThrMdl_Single);
 
@@ -134,7 +134,7 @@ namespace Ogre
 		}
 		delete _pMetaHeightmap;
 		delete _pPrivate;
-	}
+    }
 
 	void PageSection::initialise( SceneNode * const pScNode )
 	{
@@ -620,8 +620,8 @@ namespace Ogre
 		Vector3 vecTileWalk;
 
 		OHT_DBGTRACE(
-			"\taddMetaObject: " << pMetaObj->getPosition() << ", " <<
-			"type=" << pMetaObj->getObjectType() << ", " <<
+			"\taddMetaObject: " << pMetaObj->getPosition() << ", " << 
+			"type=" << pMetaObj->getObjectType() << ", " << 
 			"bbox=" << pMetaObj->getAABB()
 		);
 
@@ -699,7 +699,7 @@ namespace Ogre
 
 		for (Channel::Descriptor::iterator j = _descchann.begin(); j != _descchann.end(); ++j)
 		{
-			do
+			do 
 			{
 				input.read(&enmot);
 				switch (enmot)
@@ -868,7 +868,7 @@ namespace Ogre
 		return MetaObjectIterator(this->_pPrivate, channel, MetaObject::MOT_MetaBall, MetaObject::MOT_Invalid);
 	}
 
-	MetaObjectIterator::MetaObjectIterator( const PagePrivateNonthreaded * pPage, const Channel::Ident channel, MetaObject::MOType enmoType, ... )
+	MetaObjectIterator::MetaObjectIterator( const PagePrivateNonthreaded * pPage, const Channel::Ident channel, MetaObject::MOType enmoType, ... ) 
 		: _pPage(pPage), _channel(channel), _pUniqueInterface(NULL), _nTileCount(pPage->getManager().options.getTilesPerPage())
 	{
 		OHT_CR_INIT();

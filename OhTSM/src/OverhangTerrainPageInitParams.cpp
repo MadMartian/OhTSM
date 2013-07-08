@@ -107,7 +107,7 @@ namespace Ogre
 		return pColourMaps;
 	}
 
-	PageInitParams::ChannelParams::ChannelParams( const size_t nTilesPerPageSide, const size_t nVertsPerTileSide, const OverhangTerrainOptions::ChannelOptions & chanopts )
+	PageInitParams::ChannelParams::ChannelParams( const size_t nTilesPerPageSide, const size_t nVertsPerTileSide, const OverhangTerrainOptions::ChannelOptions & chanopts ) 
 		:	_nTilesPerPageSide(nTilesPerPageSide), _nVertsPerTileSide(nVertsPerTileSide),
 			_pColourMaps( chanopts.voxelRegionFlags & VRF_Colours ? createColourMap(nTilesPerPageSide, nVertsPerTileSide, chanopts) : NULL ),
 			_pMaterials(chanopts.materialPerTile ? new std::vector< MaterialPtr > (nTilesPerPageSide*nTilesPerPageSide) : NULL)

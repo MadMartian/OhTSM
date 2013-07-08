@@ -164,17 +164,17 @@ namespace Ogre
 			const size_t countTilesPerPageSide, countVerticesPerTileSide;
 
 		public:
-			/**
+			/** 
 			@params options Top-level configuration options
 			*/
 			ChannelParamsFactory(const OverhangTerrainOptions & options)
 				: _options(options), countTilesPerPageSide(options.getTilesPerPage()), countVerticesPerTileSide(options.tileSize) {}
 
 			/// Create an instance of the specified channel
-			ChannelParams * instantiate (const Channel::Ident channel)
-			{
+			ChannelParams * instantiate (const Channel::Ident channel) 
+			{ 
 				const OverhangTerrainOptions::ChannelOptions & chanopts = _options.channels[channel];
-				return new ChannelParams(countTilesPerPageSide, countVerticesPerTileSide, chanopts);
+				return new ChannelParams(countTilesPerPageSide, countVerticesPerTileSide, chanopts); 
 			}
 		};
 

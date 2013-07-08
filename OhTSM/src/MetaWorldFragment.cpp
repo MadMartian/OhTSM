@@ -53,7 +53,7 @@ namespace Ogre
 
 		}
 
-		Core::Core( const MetaVoxelFactory * pFactory, Voxel::CubeDataRegion * pBlock, const YLevel & ylevel )
+		Core::Core( const MetaVoxelFactory * pFactory, Voxel::CubeDataRegion * pBlock, const YLevel & ylevel ) 
 			:	_bResetting(false), _pSceneNode(NULL),
 				Post(pBlock, ylevel),
 

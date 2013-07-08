@@ -86,7 +86,7 @@ namespace Ogre
 	void TerrainTile::setRenderQueueGroup( const Channel::Ident channel, uint8 qid )
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
-
+		
 		_properties[channel].renderq = qid;
 		Channel::Index< MetaFragMap >::iterator j = _index2mapMF.find(channel);
 
@@ -185,7 +185,7 @@ namespace Ogre
 		ssISRName << "ISR[" << p << ',' << q << ';' << basic.ylevel << "] (" << _pPage->getPageX() << 'x' << _pPage->getPageY() << ')';
 
 		builder.initialise(_options.primaryCamera, pScNode, ssISRName.str());
-
+		
 		Channel::Index< ChannelProperties >::const_iterator p = _properties.find(channel);
 		if (p != _properties.end())
 		{
@@ -203,7 +203,7 @@ namespace Ogre
 		_properties[channel].material = m;
 
 		Channel::Index< MetaFragMap >::iterator j = _index2mapMF.find(channel);
-
+		
 		if (j != _index2mapMF.end())
 		{
 			for(MetaFragMap::iterator i = j->value->begin(); i != j->value->end(); ++i)
@@ -396,7 +396,7 @@ namespace Ogre
 		OHTDD_Color(DebugDisplay::MC_Yellow);
 
 		// Clamp intersection point start to boundaries
-		const Vector2 size = _bbox.maximum - _bbox.minimum;
+		const Vector2 size = _bbox.maximum - _bbox.minimum;		
 		origin.makeFloor(Vector3(size.x, std::numeric_limits< Real > ::max(), size.y) - 1.0f / (Real)Voxel::FS_Span);
 		origin.makeCeil(Vector3::ZERO);
 
@@ -404,7 +404,7 @@ namespace Ogre
 
 		// Create a ray in data-grid space with origin relative to the first would-be meta-cube intersected
 		const Ray rayTileCubeIntersectRelDataGridSpace(origin, direction);
-		RayCellWalk walker(rayTileCubeIntersectRelDataGridSpace.getOrigin(), rayTileCubeIntersectRelDataGridSpace.getDirection(), params.limit / _options.cellScale);
+		RayCellWalk walker(rayTileCubeIntersectRelDataGridSpace.getOrigin(), rayTileCubeIntersectRelDataGridSpace.getDirection(), params.limit / _options.cellScale); 
 
 		walker.lod = 0;
 		while (
@@ -436,15 +436,15 @@ namespace Ogre
 		return std::pair< bool, Real > (walker.intersection, walker.distance * _options.cellScale + tile);
 	}
 
-	void TerrainTile::rayQueryWalkCell(
-		OverhangTerrainManager::RayResult &result,
-		RayCellWalk &walker,
-		const MetaFragMap & mapMF,
-		const YLevel yl,
-		const YLevel yl0,
-		const AxisAlignedBox & bboxOrigin,
-		const Ray &rayTileCubeIntersectRelDataGridSpace,
-		const int nCellsPerCube
+	void TerrainTile::rayQueryWalkCell( 
+		OverhangTerrainManager::RayResult &result, 
+		RayCellWalk &walker, 
+		const MetaFragMap & mapMF, 
+		const YLevel yl, 
+		const YLevel yl0, 
+		const AxisAlignedBox & bboxOrigin, 
+		const Ray &rayTileCubeIntersectRelDataGridSpace, 
+		const int nCellsPerCube 
 	) const
 	{
 		MetaFragMap::const_iterator iMWF = mapMF.find(yl);	// TODO: Cache this result because yLevel changes very infrequently
@@ -465,12 +465,12 @@ namespace Ogre
 
 			OHTDD_Translate(ptRel);
 			fragment.rayQuery(
-				walker,
+				walker, 
 				WorldCellCoords(
-					0,
+					0, 
 					DIFF(yl0, yl)*nCellsPerCube,	// DEPS: Y-Level computation
 					0
-				),
+				), 
 				rayCubeRelDataGridSpace
 			);
 			result.mwf = iMWF->second;
@@ -538,7 +538,7 @@ namespace Ogre
 	MetaFragMap::iterator TerrainTile::attachFragment( const Channel::Ident channel, MetaFragment::Interfaces::Unique & fragment, MetaFragment::Container * pMWF )
 	{
 		oht_assert_threadmodel(ThrMdl_Single);
-
+		
 		MetaFragMap & mapMF = _index2mapMF[channel];
 
 		OgreAssert(mapMF.find(fragment.ylevel) == mapMF.end(), "MetaWorldFragment already exists in this terrain tile");
@@ -560,8 +560,8 @@ namespace Ogre
 		--i;
 		++k;
 		OgreAssert(
-			(i == mapMF.end() || i->first < j->first) &&
-			(k == mapMF.end() || j->first < k->first),
+			(i == mapMF.end() || i->first < j->first) && 
+			(k == mapMF.end() || j->first < k->first), 
 			"Order assumption violated"
 		);
 
@@ -649,7 +649,7 @@ namespace Ogre
 
 		uint16 c = 0;
 		{ for (Channel::Index< MetaFragMap >::const_iterator j = _index2mapMF.begin(); j != _index2mapMF.end(); ++j, c++); }
-		output.write(&c);
+		output.write(&c);			
 
 		for (Channel::Index< MetaFragMap >::const_iterator j = _index2mapMF.begin(); j != _index2mapMF.end(); ++j)
 		{
@@ -672,7 +672,7 @@ namespace Ogre
 		oht_assert_threadmodel(ThrMdl_Single);
 		uint16 nCountChannels;
 		input.read(&nCountChannels);
-
+		
 		for (uint16 c = 0; c < nCountChannels; ++c)
 		{
 			size_t nCountMWF;
@@ -776,7 +776,7 @@ namespace Ogre
 
 		for (Channel::Index< MetaFragMap >::iterator k = _index2mapMF.begin(); k != _index2mapMF.end(); ++k)
 		{
-			MetaFragMap::iterator
+			MetaFragMap::iterator 
 				i0 = k->value->begin(),
 				i1 = i0;
 
@@ -820,8 +820,8 @@ namespace Ogre
 
 			if (y != pNeighborTile->_index2mapMF.end())
 			{
-				MetaFragMap::iterator
-					i = x->value->begin(),
+				MetaFragMap::iterator 
+					i = x->value->begin(), 
 					j = y->value->begin();
 
 				while (i != x->value->end() && j != y->value->end())
@@ -902,7 +902,7 @@ namespace Ogre
 	}
 
 
-	TerrainTile::ChannelProperties::ChannelProperties()
+	TerrainTile::ChannelProperties::ChannelProperties() 
 		: renderq(RENDER_QUEUE_MAIN) {}
 
 }///namespace Ogre

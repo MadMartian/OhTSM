@@ -268,13 +268,13 @@ namespace Ogre
 		}
 	} 
 
-	OverhangTerrainManager::RayQueryParams::Channels::Channels()
+	OverhangTerrainManager::RayQueryParams::Channels::Channels() 
 		: size(0), array(NULL)
 	{
 
 	}
 
-	OverhangTerrainManager::RayQueryParams::Channels::Channels( const std::list< Channel::Ident > & channels )
+	OverhangTerrainManager::RayQueryParams::Channels::Channels( const std::list< Channel::Ident > & channels ) 
 		: array( new Channel::Ident[channels.size()]), size(channels.size())
 	{
 		size_t c = 0;
@@ -288,13 +288,13 @@ namespace Ogre
 	}
 
 
-	OverhangTerrainManager::RayQueryParams::RayQueryParams( const Real nLimit, const Channels & channels )
+	OverhangTerrainManager::RayQueryParams::RayQueryParams( const Real nLimit, const Channels & channels ) 
 		: limit(limit), channels(channels)
 	{
 
 	}
 
-	OverhangTerrainManager::RayQueryParams::RayQueryParams( const Real nLimit )
+	OverhangTerrainManager::RayQueryParams::RayQueryParams( const Real nLimit ) 
 		: limit(limit)
 	{
 

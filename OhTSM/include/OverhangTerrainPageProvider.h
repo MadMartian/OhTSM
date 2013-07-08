@@ -52,12 +52,12 @@ namespace Ogre
 		@returns True if the page load operation was handled by this implementation, false if another implementation should receive and process this event */
 		virtual bool loadPage (const int16 x, const int16 y, PageInitParams * pInitParams, IOverhangTerrainPage * pPage) = 0;
 
-		/** Called in background worker thread when a request has been made to flush a page to disk, usually just before it is to be unloaded
+		/** Called in background worker thread when a request has been made to flush a page to disk, usually just before it is to be unloaded 
 		@param pPage The page being saved
 		@param x Terrain slot x-offset
 		@param y Terrain slot y-offset
 		@param nPageAxis The size of one edge of a terrain page, in vertices
-		@param nTotalPageSize The area of the terrain page, in vertices
+		@param nTotalPageSize The area of the terrain page, in vertices 
 		@returns True if the page save operation was handled by this implementation, false if another implementation should receive and process this event */
 		virtual bool savePage (const IOverhangTerrainPage * pPage, const int16 x, const int16 y, const size_t nPageAxis, const unsigned long nTotalPageSize) = 0;
 

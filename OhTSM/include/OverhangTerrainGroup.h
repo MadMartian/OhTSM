@@ -268,7 +268,7 @@ namespace Ogre
 		 @param params Parameters influencing the ray query including the distance from the ray origin at which we will stop looking or zero for no limit
 		 @return A result structure which contains whether the ray hit a terrain and if so, where.
 		 @remarks This must be called from the main thread */
-		RayResult rayIntersects(Ray ray, const OverhangTerrainManager::RayQueryParams & params) const;
+		RayResult rayIntersects(Ray ray, const OverhangTerrainManager::RayQueryParams & params) const; 
 
 		/** Queues a background request for unloading terrain at the specified coordinates
 		@remarks Attempts to unload the terrain page at the specified slot if it is permitted to.
@@ -336,7 +336,7 @@ namespace Ogre
 		/// Describes all channels used in the group
 		Channel::Descriptor _descchan;
 
-		/// Tracks certain channel-specific properties
+		/// Tracks certain channel-specific properties 
 		struct ChannelProperties
 		{
 			MaterialPtr material;
