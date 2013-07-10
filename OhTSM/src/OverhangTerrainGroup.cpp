@@ -1,4 +1,3 @@
-second
 /*
 -----------------------------------------------------------------------------
 This source file is part of the OverhangTerrainSceneManager
