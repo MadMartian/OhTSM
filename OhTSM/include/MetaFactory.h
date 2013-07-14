@@ -116,28 +116,28 @@ namespace Ogre
 			/// Combination of IsoVertexElements::SurfaceFlags used to configure iso-surface renderables of this channel
 			const size_t surfaceFlags;
 
-			/** Describes the offsets of various vertex elements in the hardware buffers 
+			/** Describes the offsets of various vertex elements in the hardware buffers
 				used by renderables of this channel */
 			class VertexDeclarationElements
 			{
 			public:
-				const VertexElement 
+				const VertexElement
 					* const position,
 					* const normal,
 					* const diffuse,
 					* const texcoords;
 
 				VertexDeclarationElements(
-					const VertexElement * pPos, 
-					const VertexElement * pNorm, 
-					const VertexElement * pDiffuse, 
-					const VertexElement * pTexC 
+					const VertexElement * pPos,
+					const VertexElement * pNorm,
+					const VertexElement * pDiffuse,
+					const VertexElement * pTexC
 				)
 					: position(pPos), normal(pNorm), diffuse(pDiffuse), texcoords(pTexC)
 				{}
 			};
 
-			/** 
+			/**
 			@param pBase The base factory singleton
 			@param channel The channel that this factory applies to
 			@param options The main top-level options

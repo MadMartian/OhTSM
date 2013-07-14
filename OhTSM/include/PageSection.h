@@ -255,7 +255,7 @@ namespace Ogre {
 		void detachFromScene();
 
 		/// Computes a ray intersection (restricted to main thread)
-		bool rayIntersects(OverhangTerrainManager::RayResult & result, const Ray& ray, const OverhangTerrainManager::RayQueryParams & params) const; 
+		bool rayIntersects(OverhangTerrainManager::RayResult & result, const Ray& ray, const OverhangTerrainManager::RayQueryParams & params) const;
 
 		/// Retrieves an iterator for all meta-fragments in the specified channel of this page
 		MetaFragmentIterator iterateMetaFrags (const Channel::Ident channel);
@@ -310,7 +310,7 @@ namespace Ogre {
 
 		/// Dispatches the before-load event to all listeners of the specified channel
 		void fireOnBeforeLoadMetaRegion (const Channel::Ident channel, MetaFragment::Interfaces::Unique * pFragment);
-		/// Dispatches the create-meta-region event to all listeners of the specified channel
+		/// Dispatches the create-meta-region event to all listeners of the specified channel, the bounding-box is in vertex-space
 		void fireOnCreateMetaRegion (const Channel::Ident channel, Voxel::CubeDataRegion * pCubeDataRegion, MetaFragment::Interfaces::Unique * pUnique, const AxisAlignedBox & bbox);
 		/// Dispatches the init-meta-region event to all listeners of the specified channel
 		void fireOnInitMetaRegion (const Channel::Ident channel, MetaFragment::Interfaces::const_Basic * pBasic, MetaFragment::Interfaces::Builder * pBuilder);

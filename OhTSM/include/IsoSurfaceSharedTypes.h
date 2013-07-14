@@ -394,114 +394,6 @@ namespace Ogre
 		return bitmanip::testZero(signed int((csc.x | csc.y) & ((1 << nLOD) - 1)));
 	}
 
-	/// Coordinate type used to represent grid cell coordinates on the face of a 3D voxel grid / cube region in two dimensions
-	template< typename T, typename Subclass >
-	class CellCoords
-	{
-	public:
-		// DEPS: operator [] depends on these fields appearing first in declaration sequence
-		T i, j, k;
-
-		CellCoords () : i(0), j(0), k(0) {}
-		CellCoords (CellCoords && move)
-			: i(move.i), j(move.j), k(move.k) {}
-		CellCoords (const T i, const T j, const T k)
-			: i(i), j(j), k(k) {}
-
-		inline Subclass operator - (const Subclass & vc) const
-		{
-			return Subclass(
-				i - vc.i,
-				j - vc.j,
-				k - vc.k
-			);
-		}
-		inline Subclass operator + (const Subclass & vc) const
-		{
-			return Subclass(
-				i + vc.i,
-				j + vc.j,
-				k + vc.k
-			);
-		}
-		inline Subclass & operator -= (const Subclass & vc)
-		{
-			i -= vc.i;
-			j -= vc.j;
-			k -= vc.k;
-			return *static_cast< Subclass * > (this);
-		}
-		inline Subclass & operator += (const Subclass & vc)
-		{
-			i += vc.i;
-			j += vc.j;
-			k += vc.k;
-			return *static_cast< Subclass * > (this);
-		}
-		inline Subclass & operator >>= (const unsigned s)
-		{
-			i >>= s;
-			j >>= s;
-			k >>= s;
-			return *static_cast< Subclass * > (this);
-		}
-
-		inline Subclass operator & (const T mask) const
-		{
-			return Subclass(
-				i & mask,
-				j & mask,
-				k & mask
-			);
-		}
-
-		inline Subclass & operator &= (const T mask)
-		{
-			i &= mask;
-			j &= mask;
-			k &= mask;
-			return *static_cast< Subclass * > (this);
-		}
-
-		inline Subclass & operator |= (const Subclass & vc)
-		{
-			i |= vc.i;
-			j |= vc.j;
-			k |= vc.k;
-			return *static_cast< Subclass * > (this);
-		}
-
-		inline T & operator [] (const unsigned nSimplex)
-		{
-			OgreAssert(nSimplex < 3, "Supports only points, lines, and faces");
-			return reinterpret_cast< T * > (this)[nSimplex];
-		}
-		inline const T & operator [] (const unsigned nSimplex) const
-		{
-			OgreAssert(nSimplex < 3, "Supports only points, lines, and faces");
-			return reinterpret_cast< const T * > (this)[nSimplex];
-		}
-
-		inline bool operator == (const Subclass & vc) const
-		{ return i == vc.i && j == vc.j && k == vc.k; }
-
-		inline bool operator < (const Subclass & other) const
-		{ return hash() < other.hash(); }
-
-		inline Ogre::Log::Stream & operator << (Ogre::Log::Stream & out) const { return write(out); }
-		inline std::ostream & operator << (std::ostream & out) const { return write(out); }
-
-	private:
-		template< typename S > inline S & write (S & outs) const 
-		{ return outs << "<" << i << "," << j << "," << k << ">"; }
-
-		inline unsigned long long hash() const
-		{ return (unsigned long long (k) << 32) | (unsigned long long (j) << 16) | i; }
-
-		friend Ogre::Log::Stream & operator << (Ogre::Log::Stream & outs, const Subclass & vc);
-		friend std::ostream & operator << (std::ostream & outs, const Subclass & vc);
-	};
-
 	/// Coordinate type used to represent voxel coordinates / grid point coordinates of a 3D voxel grid / cube region in three dimensions
 	class GridPointCoords : public CellCoords< DimensionType, GridPointCoords >
 	{
@@ -756,46 +648,15 @@ namespace Ogre
 			: origin(orig), direction(dir) {}
 	};
 
-	/// Iterator pattern for walking through a digital 3D-grid
-	class RayCellWalk
+	// Iterator pattern for walking along a ray in a variable sized cell grid based on LOD
+	class RayCellWalk : public DiscreteRayIterator
 	{
 	private:
-		/// Incremented gradually until one of its components crosses 1.0, always positive, and the origin
-		Vector3 _walker, _origin;
-
-		/// Increments the walker, this is always positive
-		Vector3 _incrementor;
-
-		struct {
-			signed short x, y, z;
-			size_t mx, my, mz;
-		} 
-		/// Used to update the cell coordinates, accounts for negative directions unlike the incrementor
-		_delta;
-
-		/// Used to determine which component of the walker crossed 1.0 first
-		Vector3 _dist;
-
-		/// Used to track the limit
-		Real _limit_sq;
-
-		/// Used to indicate the span of a single cell based on current LOD (float version)
-		Real _fspan;
-
-		/// Used to indicate the span of a single cell based on current LOD (integral version)
-		signed short _ispan;
-
-		/// Runs a single iteration
-		void iterate();
-
 		/// Called when the LOD changes
 		void updateLOD(const unsigned nLOD);
 
 	public:
-		/// Which cell of the data-grid are we in?
-		WorldCellCoords wcell;  
-
-		// The level of detail which determines the size of the cells walking
+		// Property accessor for the level of detail which determines the size of the cells walking
 		class LOD
 		{
 		public:
@@ -811,12 +672,6 @@ namespace Ogre
 			friend class RayCellWalk;
 		} lod;
 
-		/// Distance from the ray origin to the intersection point (if valid)
-		Real distance;
-
-		/// Flag for determining if the distance property is valid
-		bool intersection;
-
 		/** 
 		@param ptOrigin Origin of the ray
 		@param direction Direction of the ray
@@ -824,18 +679,13 @@ namespace Ogre
 		*/
 		RayCellWalk(const Vector3 & ptOrigin, const Vector3 & direction, const Real limit = 0);
 
-		Vector3 getPosition() const;
+		/// The LOD-adjusted real position in space
+		virtual Vector3 getPosition() const;
 
 		inline
 		operator bool () const 
 		{ 
 			return _limit_sq && LENGTH_SQ(_walker - _origin) < _limit_sq;
-		}
-
-		inline
-		void operator ++ ()
-		{
-			iterate();
 		}
 	};
 }

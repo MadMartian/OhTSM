@@ -85,7 +85,7 @@ namespace Ogre
 		public:
 			MaterialPtr material;
 			bool materialPerTile;
-			
+
 			/// Type of normals that IsoSurfaceBuilder generates
 			NormalsType normals;
 			/// Whether or not to invert generated normals

@@ -56,7 +56,7 @@ namespace Ogre
 
 	public:
 		MyUpdateFunctor (const MetaHeightMap * self, const CubeDataRegion * pDG)
-			: FieldStrengthFunctorBase(self, pDG) 
+			: FieldStrengthFunctorBase(self, pDG)
 		{
 			Vector3 o = pDG->getBoundingBox().getMinimum();
 			o -= self->getAABB().getMinimum();
@@ -115,7 +115,7 @@ namespace Ogre
 	void MetaHeightMap::intersection( AxisAlignedBox & bbox ) const
 	{
 		//calculate min and max heights;
-		Real 
+		Real
 			min = bbox.getMinimum().y,
 			max = bbox.getMaximum().y;
 
@@ -123,10 +123,10 @@ namespace Ogre
 			b0 = min,
 			bN = max;
 
-		const size_t 
-			x0 = size_t(bbox.getMinimum().x / _hscale), 
-			z0 = size_t(bbox.getMinimum().z / _hscale), 
-			xN = size_t(bbox.getMaximum().x / _hscale), 
+		const size_t
+			x0 = size_t(bbox.getMinimum().x / _hscale),
+			z0 = size_t(bbox.getMinimum().z / _hscale),
+			xN = size_t(bbox.getMaximum().x / _hscale),
 			zN = size_t(bbox.getMaximum().z / _hscale);
 
 		for ( size_t j = z0; j < zN; j++ )

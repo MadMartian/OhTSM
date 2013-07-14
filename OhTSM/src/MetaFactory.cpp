@@ -39,7 +39,7 @@ http://www.gnu.org/copyleft/lesser.txt.
 
 namespace Ogre
 {
-	namespace Voxel 
+	namespace Voxel
 	{
 		MetaVoxelFactory::MetaVoxelFactory(
 			MetaBaseFactory * pBase,
@@ -122,11 +122,11 @@ namespace Ogre
 		return &(*_pVoxelFacts)[channel];
 	}
 
-	MetaBaseFactory::MetaBaseFactory( 
+	MetaBaseFactory::MetaBaseFactory(
 		const OverhangTerrainOptions & opts, 
 		ManualResourceLoader * pManRsrcLoader
 	) 
-		:	_pCubeMeta(new Voxel::CubeDataRegionDescriptor(opts.tileSize, opts.cellScale)), 
+		:	_pCubeMeta(new Voxel::CubeDataRegionDescriptor(opts.tileSize, opts.cellScale)),
 			_options(opts), 
 			_pManRsrcLoader(pManRsrcLoader),
 			_pVoxelFacts(NULL)
@@ -139,8 +139,8 @@ namespace Ogre
 				{
 					const OverhangTerrainOptions::ChannelOptions & chanopts = opts.channels[channel];
 					return new IsoSurfaceBuilder::ChannelParameters(
-						chanopts.transitionCellWidthRatio, 
-						IsoSurfaceBuilder::genSurfaceFlags(chanopts), 
+						chanopts.transitionCellWidthRatio,
+						IsoSurfaceBuilder::genSurfaceFlags(chanopts),
 						chanopts.maxGeoMipMapLevel,
 						chanopts.maxPixelError,
 						chanopts.flipNormals,
@@ -153,7 +153,7 @@ namespace Ogre
 		MetaBaseFactory * self = this;
 
 		_pVoxelFacts = new Channel::Index< Voxel::MetaVoxelFactory, Channel::FauxFactory< Voxel::MetaVoxelFactory > > (
-			opts.channels.descriptor, 
+			opts.channels.descriptor,
 			[self, opts] (const Channel::Ident channel) -> Voxel::MetaVoxelFactory *
 			{
 				return new Voxel::MetaVoxelFactory(self, channel, opts);

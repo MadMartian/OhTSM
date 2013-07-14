@@ -223,79 +223,7 @@ namespace Ogre
 		{ 0, 2 },		// Above
 		{ 0, 2 }		// Below
 	};
-
-	RayCellWalk::RayCellWalk( const Vector3 & ptOrigin, const Vector3 & direction, const Real limit /*=0*/) 
-	:	_walker(ptOrigin),
-		_limit_sq(limit*limit),
-		_incrementor(
-			Math::Abs(direction.x),
-			Math::Abs(direction.y),
-			Math::Abs(direction.z)
-		),
-		intersection(false)
-	{
-		lod._pWalker = this;
-
-		_delta.x = direction.x < 0.0f ? -1 : 1;
-		_delta.y = direction.y < 0.0f ? -1 : 1;
-		_delta.z = direction.z < 0.0f ? -1 : 1;
-
-		_delta.mx = (((_delta.x + 1) >> 1) - 1);
-		_delta.my = (((_delta.y + 1) >> 1) - 1);
-		_delta.mz = (((_delta.z + 1) >> 1) - 1);
-
-		wcell.i = (signed short)floor(ptOrigin.x);
-		wcell.j = (signed short)floor(ptOrigin.y);
-		wcell.k = (signed short)floor(ptOrigin.z);
-
-		_walker.x -= wcell.i;
-		_walker.y -= wcell.j;
-		_walker.z -= wcell.k;
-
-		if (_delta.x < 0)
-			_walker.x = -_walker.x + (short)1;
-		if (_delta.y < 0)
-			_walker.y = -_walker.y + (short)1;
-		if (_delta.z < 0)
-			_walker.z = -_walker.z + (short)1;
-
-		OgreAssert(_walker.x >= (short)0 && _walker.y >= (short)0 && _walker.z >= (short)0, "Walker must be positive");
-
-		_origin = _walker;
-
-		OHT_DBGTRACE("RayCellWalk: delta=<" << _delta.x << ',' << _delta.y << ',' << _delta.z << ">, wcell=" << wcell << ", walker=" << _walker << ", inc=" << _incrementor);
-	}
-
-	void RayCellWalk::iterate()
-	{
-		_dist = (_fspan - _walker) / _incrementor;
-
-		while (
-			_walker.x < _fspan &&
-			_walker.y < _fspan &&
-			_walker.z < _fspan
-		)
-			_walker += _incrementor * _fspan;
-
-		if (_walker.x >= _fspan
-			&& (_dist.x <= _dist.y && _dist.x <= _dist.z))
-		{
-			wcell.i += _delta.x * _ispan;
-			_walker.x -= _fspan;
-		}
-		else if (_walker.y >= _fspan
-			&& (_dist.y <= _dist.x && _dist.y <= _dist.z))
-		{
-			wcell.j += _delta.y * _ispan;
-			_walker.y -= _fspan;
-		}
-		else
-		{
-			wcell.k += _delta.z * _ispan;
-			_walker.z -= _fspan;
-		}
-	}
-
+	
 	void RayCellWalk::updateLOD( const unsigned nLOD )
 	{
 		OgreAssert(nLOD >= lod._lod, "Cannot go backwards with LOD");
@@ -305,25 +233,35 @@ namespace Ogre
 		_fspan = (Real)_ispan;
 		
 		// Adjust the walker by the spatial difference between cells of different LOD at the wcell coordinates
-		_walker.x += Real(((wcell.i & m) & ~_delta.mx) | (((_ispan - ((wcell.i + ispan0) & m)) % _ispan) & _delta.mx));
-		_walker.y += Real(((wcell.j & m) & ~_delta.my) | (((_ispan - ((wcell.j + ispan0) & m)) % _ispan) & _delta.my));
-		_walker.z += Real(((wcell.k & m) & ~_delta.mz) | (((_ispan - ((wcell.k + ispan0) & m)) % _ispan) & _delta.mz));
+		_walker.x += Real(((_cell.i & m) & ~_delta.mx) | (((_ispan - ((_cell.i + ispan0) & m)) % _ispan) & _delta.mx));
+		_walker.y += Real(((_cell.j & m) & ~_delta.my) | (((_ispan - ((_cell.j + ispan0) & m)) % _ispan) & _delta.my));
+		_walker.z += Real(((_cell.k & m) & ~_delta.mz) | (((_ispan - ((_cell.k + ispan0) & m)) % _ispan) & _delta.mz));
 
-		wcell &= ~m;
+		_cell &= ~m;
 	}
 
 	Ogre::Vector3 RayCellWalk::getPosition() const
 	{
-		Vector3 v;
+		Vector3 v = DiscreteRayIterator::getPosition();
 
-		v.x = (Real)(wcell.i + (signed int)((_delta.mx & 1) << lod._lod)) + _walker.x * (Real)_delta.x;
-		v.y = (Real)(wcell.j + (signed int)((_delta.my & 1) << lod._lod)) + _walker.y * (Real)_delta.y;
-		v.z = (Real)(wcell.k + (signed int)((_delta.mz & 1) << lod._lod)) + _walker.z * (Real)_delta.z;
+		v.x += (Real)((_delta.mx & 1) << lod._lod);
+		v.y += (Real)((_delta.my & 1) << lod._lod);
+		v.z += (Real)((_delta.mz & 1) << lod._lod);
 
 		return v;
 	}
 
-	unsigned RayCellWalk::LOD::operator=( const unsigned nLOD )
+	RayCellWalk::RayCellWalk( const Vector3 & ptOrigin, const Vector3 & direction, const Real limit /*= 0*/ )
+		: DiscreteRayIterator(ptOrigin, direction, limit)
+	{
+		lod._pWalker = this;
+
+		_delta.mx = (((_delta.x + 1) >> 1) - 1);
+		_delta.my = (((_delta.y + 1) >> 1) - 1);
+		_delta.mz = (((_delta.z + 1) >> 1) - 1);
+	}
+
+	unsigned RayCellWalk::LOD::operator = ( const unsigned nLOD )
 	{
 		_pWalker->updateLOD(nLOD);
 		return _lod = nLOD;

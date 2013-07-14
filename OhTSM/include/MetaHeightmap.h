@@ -96,7 +96,7 @@ namespace Ogre
 
 	private:
 		/// Discrete heightmap field from which voxel grids making-up the page to which this meta-heightmap belongs are created
-		Real * _vHeightmap, 
+		Real * _vHeightmap,
 			/// Units to scale horizontal coverage area of the heightmap, and vertical scaling of the DEM values
 			_hscale, _vscale;
 

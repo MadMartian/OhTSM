@@ -113,6 +113,212 @@ namespace Ogre
 		NumOCS = 5
 	};
 
+	
+	/// Coordinate type used to represent discrete coordinates such as in a 3D voxel grid or to represent meta-regions in terrain tiles or page sections
+	template< typename T, typename Subclass >
+	class CellCoords
+	{
+	public:
+		// DEPS: operator [] depends on these fields appearing first in declaration sequence
+		T i, j, k;
+
+		CellCoords () : i(0), j(0), k(0) {}
+		CellCoords (CellCoords && move)
+			: i(move.i), j(move.j), k(move.k) {}
+		CellCoords (const T i, const T j, const T k)
+			: i(i), j(j), k(k) {}
+
+		inline Subclass operator - (const Subclass & vc) const
+		{
+			return Subclass(
+				i - vc.i,
+				j - vc.j,
+				k - vc.k
+			);
+		}
+		inline Subclass operator + (const Subclass & vc) const
+		{
+			return Subclass(
+				i + vc.i,
+				j + vc.j,
+				k + vc.k
+			);
+		}
+		inline Subclass & operator -= (const Subclass & vc)
+		{
+			i -= vc.i;
+			j -= vc.j;
+			k -= vc.k;
+			return *static_cast< Subclass * > (this);
+		}
+		inline Subclass & operator += (const Subclass & vc)
+		{
+			i += vc.i;
+			j += vc.j;
+			k += vc.k;
+			return *static_cast< Subclass * > (this);
+		}
+		inline Subclass & operator >>= (const unsigned s)
+		{
+			i >>= s;
+			j >>= s;
+			k >>= s;
+			return *static_cast< Subclass * > (this);
+		}
+
+		inline Subclass operator & (const T mask) const
+		{
+			return Subclass(
+				i & mask,
+				j & mask,
+				k & mask
+			);
+		}
+
+		inline Subclass & operator &= (const T mask)
+		{
+			i &= mask;
+			j &= mask;
+			k &= mask;
+			return *static_cast< Subclass * > (this);
+		}
+
+		inline Subclass & operator |= (const Subclass & vc)
+		{
+			i |= vc.i;
+			j |= vc.j;
+			k |= vc.k;
+			return *static_cast< Subclass * > (this);
+		}
+
+		inline T & operator [] (const unsigned nSimplex)
+		{
+			OgreAssert(nSimplex < 3, "Supports only points, lines, and faces");
+			return reinterpret_cast< T * > (this)[nSimplex];
+		}
+		inline const T & operator [] (const unsigned nSimplex) const
+		{
+			OgreAssert(nSimplex < 3, "Supports only points, lines, and faces");
+			return reinterpret_cast< const T * > (this)[nSimplex];
+		}
+
+		inline bool operator == (const Subclass & vc) const
+		{ return i == vc.i && j == vc.j && k == vc.k; }
+		
+		inline bool operator != (const Subclass & vc) const
+		{ return i != vc.i || j != vc.j || k != vc.k; }
+
+		inline bool operator < (const Subclass & other) const
+		{ return hash() < other.hash(); }
+
+		inline Ogre::Log::Stream & operator << (Ogre::Log::Stream & out) const { return write(out); }
+		inline std::ostream & operator << (std::ostream & out) const { return write(out); }
+
+	private:
+		template< typename S > inline S & write (S & outs) const 
+		{ return outs << "<" << i << "," << j << "," << k << ">"; }
+
+		inline unsigned long long hash() const
+		{ return (unsigned long long (k) << 32) | (unsigned long long (j) << 16) | i; }
+
+		friend Ogre::Log::Stream & operator << (Ogre::Log::Stream & outs, const Subclass & vc);
+		friend std::ostream & operator << (std::ostream & outs, const Subclass & vc);
+	};
+
+	/// Coordinate type used to represent 3D world coordinates in the same units as grid cell coordinates of a 3D voxel grid / cube region
+	class DiscreteCoords : public CellCoords< signed long, DiscreteCoords >
+	{
+	public:
+		DiscreteCoords () : CellCoords() {}
+		DiscreteCoords (DiscreteCoords && move)
+			: CellCoords(move) {}
+		DiscreteCoords (const signed int i, const signed int j, const signed int k)
+			: CellCoords(i, j, k) {}
+	};
+
+	inline Ogre::Log::Stream & operator << (Ogre::Log::Stream & outs, const DiscreteCoords & dc)
+		{ return dc.write(outs); }
+	inline std::ostream & operator << (std::ostream & outs, const DiscreteCoords & dc)
+		{ return dc.write(outs); }
+
+	/// Iterator pattern for walking through a discrete 3D-grid of arbitrary size
+	class DiscreteRayIterator : public std::iterator <std::input_iterator_tag, std::pair< bool, Real > >
+	{
+	private:
+		/// Runs a single iteration
+		void iterate();
+
+	protected:
+		/// Ray origin
+		const Vector3 _origin;
+
+		/// Incremented gradually until one of its components crosses 1.0, always positive
+		Vector3 _walker;
+
+		/// Increments the walker, this is always positive
+		Vector3 _incrementor;
+
+		/// Used to update the cell coordinates, accounts for negative directions unlike the incrementor, mask flags indicating negativity of the corresponding deltas
+		struct {
+			signed short x, y, z;
+			size_t mx, my, mz;
+		} _delta;
+
+		/// Used to determine which component of the walker crossed 1.0 first
+		Vector3 _dist;
+
+		/// Used to track the limit
+		Real _limit_sq;
+
+		/// Used to indicate the span of a single cell based on current LOD (float version)
+		Real _fspan;
+
+		/// Used to indicate the span of a single cell based on current LOD (integral version)
+		signed short _ispan;
+
+		/// Stores the current intersection state, the second member is the distance from the ray origin to the intersection point (if valid), and the first member indicates if the second member is valid
+		std::pair< bool, Real > _intersection;
+
+		/// Which cell in discrete space are we currently in?
+		DiscreteCoords _cell;
+
+	public:
+		/// Property accessor for the discrete cell coordinates
+		class CellPropertyAccessor
+		{
+		public:
+			inline DiscreteCoords * operator -> () { return _pCell; }
+			inline operator const DiscreteCoords & () const { return *_pCell; }
+
+		protected:
+			inline void operator &= (DiscreteCoords & pCell) { _pCell = &pCell; }
+
+		private:
+			DiscreteCoords * _pCell;
+
+			friend class DiscreteRayIterator;
+		} cell;
+
+		/** 
+		@param ptOrigin Origin of the ray
+		@param direction Direction of the ray
+		@param limit Optional search limit length of the ray or zero to specify no limit
+		*/
+		DiscreteRayIterator(const Vector3 & ptOrigin, const Vector3 & direction, const Real limit = 0);
+
+		/// Gets the current real-approximate position
+		virtual Vector3 getPosition() const;
+
+		bool operator == (const DiscreteRayIterator & other) const;
+		bool operator != (const DiscreteRayIterator & other) const;
+
+		std::pair< bool, Real > & operator * () { return _intersection; }
+		std::pair< bool, Real > * operator -> () { return &_intersection; }
+
+		DiscreteRayIterator & operator ++ ();
+		DiscreteRayIterator operator ++ (int);
+	};
+
 	/** Type to represent a fixed-precision rational value 
 	@remarks "B" is the number of bits to occupy for the fractional part, "T" is the integral type to represent the entire number in memory
 	*/
@@ -661,7 +867,7 @@ namespace Ogre
 		);
 	}
 
-	class BBox2D 
+	class BBox2D
 	{
 	public:
 		Vector2 minimum, maximum;

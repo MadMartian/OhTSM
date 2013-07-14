@@ -171,10 +171,10 @@ namespace Ogre
 	}
 
 	IsoSurfaceBuilder::IsoSurfaceBuilder(
-		const CubeDataRegionDescriptor & cubemeta, 
+		const CubeDataRegionDescriptor & cubemeta,
 		const Channel::Index< ChannelParameters > & chanparams
 	)
-  	: 	_cubemeta(cubemeta), 
+	: 	_cubemeta(cubemeta),
 		_chanparams(chanparams),
 		_vRegularCases(new unsigned char [cubemeta.cellcount]),
 		_pCurrentChannelParams(NULL)
@@ -214,14 +214,14 @@ namespace Ogre
 		return txTCHalf2Full;
 	}
 
-	IsoSurfaceBuilder::ChannelParameters::ChannelParameters( 
-		const Real fTCWidthRatio, 
-		const size_t nSurfaceFlags, 
-		const unsigned short nLODCount, 
-		const Real fMaxPixelError, 
-		const bool bFlipNormals, 
-		const NormalsType enNormalType 
-	) 
+	IsoSurfaceBuilder::ChannelParameters::ChannelParameters(
+		const Real fTCWidthRatio,
+		const size_t nSurfaceFlags,
+		const unsigned short nLODCount,
+		const Real fMaxPixelError,
+		const bool bFlipNormals,
+		const NormalsType enNormalType
+	)
 		:	_txTCHalf2Full(createTransitionCellTranslators(nLODCount, fTCWidthRatio)),
 			surfaceFlags(nSurfaceFlags),
 			clod(nLODCount),
@@ -249,10 +249,10 @@ namespace Ogre
 
 		}
 	}
-	
+
 	size_t IsoSurfaceBuilder::genSurfaceFlags( const OverhangTerrainOptions::ChannelOptions & chanopts )
 	{
-		return 
+		return
 			(chanopts.normals != NT_None ? IsoVertexElements::GEN_NORMALS : 0) |
 			(chanopts.voxelRegionFlags & VRF_Colours ? IsoVertexElements::GEN_VERTEX_COLOURS : 0) |
 			(chanopts.voxelRegionFlags & VRF_TexCoords ? IsoVertexElements::GEN_TEX_COORDS : 0);
@@ -329,8 +329,8 @@ namespace Ogre
 				DebugInfo(pISR),
 #endif // _DEBUG
 				pISR->getMetaWorldFragment() ->factory->channel,
-				pResolution, pDataGrid, pISR->getShadow(), 
-				pISR->getMetaWorldFragment() ->factory->surfaceFlags, 
+				pResolution, pDataGrid, pISR->getShadow(),
+				pISR->getMetaWorldFragment() ->factory->surfaceFlags,
 				enStitches, pISR->getVertexBufferCapacity(nLOD)
 			);
 			pISR->directlyPopulateBuffers(_pMainVtxElems, pResolution, enStitches, _pMainVtxElems->vertexShipment.size(), _pMainVtxElems->triangles.size() * 3);
@@ -519,13 +519,13 @@ namespace Ogre
 			_pMainVtxElems->clear();
 			restoreCaseCache(_pResolution);
 
-			//OHTDD_Color(DebugDisplay::MC_Red);
+			OHTDD_Color(DebugDisplay::MC_Red);
 
 			walker.lod = nLOD;
 			GridCellCoords gcc(
-				walker.wcell.i + wcctr.i,
-				walker.wcell.j + wcctr.j,
-				walker.wcell.k + wcctr.k,
+				walker.cell->i + wcctr.i,
+				walker.cell->j + wcctr.j,
+				walker.cell->k + wcctr.k,
 				nLOD
 			);
 
@@ -559,8 +559,8 @@ namespace Ogre
 					)
 					<< ", WRelPos=" << walker.getPosition() << ", WPos=" << (vWPos * pDataGrid->getGridScale() + pDataGrid->getBoundingBox().getMinimum())
 				);
-				//OHTDD_Cube(bboxCell);
-				//OHTDD_Point(vWPos);
+				OHTDD_Cube(bboxCell);
+				OHTDD_Point(vWPos);
 #endif
 
 				if (stitch)
@@ -577,7 +577,7 @@ namespace Ogre
 
 					for (NeighborVector::const_iterator i  = neighbors.begin(); i != neighbors.end(); ++i)
 					{
-						//OHTDD_Translate(-pDataGrid->getBoundingBox().getSize() / (pDataGrid->getGridScale() * 2));
+						OHTDD_Translate(-pDataGrid->getBoundingBox().getSize() / (pDataGrid->getGridScale() * 2));
 
 						tc.side = *i;
 						tc = gcc;
@@ -613,9 +613,9 @@ namespace Ogre
 								<< ')'
 							);
 
-							if (!j.collapsed() && rayCollidesTriangle(&walker.distance, ray, j[0], j[1], j[2]))
+							if (!j.collapsed() && rayCollidesTriangle(&walker->second, ray, j[0], j[1], j[2]))
 							{
-								walker.intersection = true;
+								walker->first = true;
 								return;
 							}
 						}
@@ -624,7 +624,7 @@ namespace Ogre
 
 				gc = gcc;
 
-				//OHTDD_Translate(-pDataGrid->getBoundingBox().getSize() / (pDataGrid->getGridScale() * 2));
+				OHTDD_Translate(-pDataGrid->getBoundingBox().getSize() / (pDataGrid->getGridScale() * 2));
 
 				NonTrivialRegularCase rgcase;
 				rgcase.cell = gc.index();
@@ -652,23 +652,23 @@ namespace Ogre
 						<< ')'
 					);
 
-					if (!j.collapsed() && rayCollidesTriangle(&walker.distance, ray, j[0], j[1], j[2]))
+					if (!j.collapsed() && rayCollidesTriangle(&walker->second, ray, j[0], j[1], j[2]))
 					{
-						walker.intersection = true;
+						walker->first = true;
 						return;
 					}
 				}
 
 				++walker;
-				gcc.i = walker.wcell.i + wcctr.i;
-				gcc.j = walker.wcell.j + wcctr.j;
-				gcc.k = walker.wcell.k + wcctr.k;
+				gcc.i = walker.cell->i + wcctr.i;
+				gcc.j = walker.cell->j + wcctr.j;
+				gcc.k = walker.cell->k + wcctr.k;
 
 				neighbors.clear();
 			}
 		}
 
-		walker.intersection = false;
+		walker->first = false;
 	}
 
 #ifdef _DEBUG
@@ -903,7 +903,7 @@ namespace Ogre
 	#pragma optimize("gtpy", on)
 #endif
 	void IsoSurfaceBuilder::triangulateRegulars()
- 	{
+	{
 		OgreAssert(_nLOD < _pCurrentChannelParams->clod, "Level of detail exceeds lowest allowed");
 		oht_assert_threadmodel(ThrMdl_Single);
 
@@ -1333,8 +1333,8 @@ namespace Ogre
 		OHT_ISB_DBGTRACE("\t\t\t\t\t\t\t\t\tQ=" << OHTDD_Reverse(q) << ", (s,t) = (" << s << ',' << t << ')' << ", distance=" << *pDist);
 #endif // _DEBUG
 
-		//OHTDD_Color(DebugDisplay::MC_Blue);
-		//OHTDD_Point(q);
+		OHTDD_Color(DebugDisplay::MC_Blue);
+		OHTDD_Point(q);
 
 #if defined(_DISPDBG)
 		DebugDisplay::MaterialColor mcColor;
@@ -1343,8 +1343,8 @@ namespace Ogre
 		else
 			mcColor = DebugDisplay::MC_Magenta;
 
-		//OHTDD_Color(mcColor);
-		//OHTDD_Tri(mMainVtxElems->positions[a], mMainVtxElems->positions[b], mMainVtxElems->positions[c]);
+		OHTDD_Color(mcColor);
+		OHTDD_Tri(_pMainVtxElems->positions[a], _pMainVtxElems->positions[b], _pMainVtxElems->positions[c]);
 #endif // _DEBUG
 
 		return s >= 0 && t >= 0 && s+t <= 1.0f;
@@ -1670,7 +1670,7 @@ namespace Ogre
 	}
 
 	IsoSurfaceBuilder::MainVertexElements::MainVertexElements( const CubeDataRegionDescriptor & dgtmpl )
-		: IsoVertexElements(computeTotalElements(dgtmpl)), 
+		: IsoVertexElements(computeTotalElements(dgtmpl)),
 			_cubemeta(dgtmpl), 
 			remappings(new IsoVertexIndex[computeTotalElements(dgtmpl)]),
 			trmappings(new IsoVertexIndex[computeTotalElements(dgtmpl)]),

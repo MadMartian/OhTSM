@@ -92,7 +92,7 @@ namespace Ogre
 				const size_t size;
 
 				Channels();
-				/** 
+				/**
 				@param channels A collection of channels (identifiers) used to factor-into the query, other channels will be ignored in the query
 				*/
 				Channels(const std::list< Channel::Ident > & channels);
@@ -100,22 +100,22 @@ namespace Ogre
 			} channels;
 
 		private:
-			/** 
+			/**
 			@param nLimit Distance limit in world units to terminate ray searching
 			@param channels A collection of channels (identifiers) used to factor-into the query, other channels will be ignored in the query
 			*/
 			RayQueryParams(const Real nLimit, const Channels & channels);
-			/** 
+			/**
 			@param nLimit Distance limit in world units to terminate ray searching
 			*/
 			RayQueryParams(const Real nLimit);
 
 		public:
-			/** 
+			/**
 			@param nLimit Distance limit in world units to terminate ray searching
 			*/
 			static RayQueryParams from (const Real nLimit);
-			/** 
+			/**
 			@param nLimit Distance limit in world units to terminate ray searching
 			@param channel An inline ellipsis-list of channels (identifiers) used to factor-into the query, other channels will be ignored in the query
 			*/

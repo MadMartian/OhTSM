@@ -78,7 +78,7 @@ namespace Ogre
 		{
 			unsigned char * pOffset = static_cast< unsigned char * > (
 				pVtxBuffer->lock(
-					queue.resolution->getHWIndexBufferTail() * nVertexByteSize, 
+					queue.resolution->getHWIndexBufferTail() * nVertexByteSize,
 					queue.vertexQueue.size() * nVertexByteSize,
 					HardwareBuffer::HBL_DISCARD
 				)
@@ -125,7 +125,7 @@ namespace Ogre
 			);
 			for (BuilderQueue::IndexList::const_iterator i = queue.indexQueue.begin(); i != queue.indexQueue.end(); ++i)
 				*pIndex++ = *i;
-			
+
 			pIdxBuffer->unlock();
 		}
 
@@ -149,7 +149,7 @@ namespace Ogre
 		HardwareIndexBufferSharedPtr pIdxBuffer = pair.second->getIndexData()->indexBuffer;
 
 		const size_t nVertexByteSize = _pMWF->factory->getVertexSize();
-		const float fVertScale = 
+		const float fVertScale =
 			const_cast< const MetaFragment::Container * > (_pMWF)	// Enter "const" context
 			->acquire< MetaFragment::Interfaces::const_Basic > ()	// Acquire basic concurrent access
 			.block					// Retrieve the fragment's voxel cube region
@@ -160,7 +160,7 @@ namespace Ogre
 		{
 			unsigned char * pOffset = static_cast< unsigned char * > (
 				pVtxBuffer->lock(
-					pResolution->getHWIndexBufferTail() * nVertexByteSize, 
+					pResolution->getHWIndexBufferTail() * nVertexByteSize,
 					pVtxElems->vertexShipment.size() * nVertexByteSize,
 					HardwareBuffer::HBL_DISCARD
 				)
