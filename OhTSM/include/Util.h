@@ -36,6 +36,7 @@ Torus Knot Software Ltd.
 #include <OgreLog.h>
 
 #include "OverhangTerrainPrerequisites.h"
+#include "Neighbor.h"
 
 /// Boost scoped try/lock
 #define OHT_TRY_LOCK_MUTEX(x) boost::recursive_mutex::scoped_try_lock lock(_mutex); if (lock)
@@ -70,6 +71,20 @@ unsigned long long computeCRCImpl (const unsigned long long * pData, const size_
 
 namespace Ogre
 {
+	/// Provides a way of specifying literal numbers in binary notation
+	namespace literal
+	{
+		template<unsigned long N>
+		struct B {
+			enum { _ = (N%10)+2*B<N/10>::_ };
+		} ;
+
+		template<>
+		struct B<0> {
+			enum { _ = 0 };
+		};
+	}
+
 	/// Functions that employ conditionals without branching
 	namespace bitmanip
 	{
@@ -100,6 +115,141 @@ namespace Ogre
 			return minimum(high, maximum(low, val));
 		}
 	}
+	
+	/// Denotes whether a coordinate is flush with a minimal-edge or maximal-edge or neither bounded by the dimensions
+	enum TouchStatus
+	{
+		TS_None = 0,
+		TS_Low = 1,
+		TS_High = 2
+	};
+
+	/// Denotes whether a 2D-pair of coordinates are flush with a minimal or maximal edge or corner as bounded by the dimensions
+	enum Touch2DSide
+	{
+		T2DS_None =			literal::B<   0>::_,
+
+		T2DS_Left =			literal::B<   1>::_,
+		T2DS_Right =		literal::B<  10>::_,
+
+		T2DS_Top =			literal::B< 100>::_,
+		T2DS_TopLeft =		literal::B< 101>::_,
+		T2DS_TopRight =		literal::B< 110>::_,
+
+		T2DS_Bottom =		literal::B<1000>::_,
+		T2DS_BottomLeft =	literal::B<1001>::_,
+		T2DS_BottomRight =	literal::B<1010>::_,
+
+		T2DS_Minimal = T2DS_Left,
+		T2DS_Maximal = T2DS_Right,
+
+		Count2DTouchSideElements = 11
+	};
+	/// Denotes whether a 3D-tuple of coordinates are flush with a minimal or maximal side or edge as bounded by the dimensions
+	enum Touch3DSide
+	{
+		T3DS_None =				T2DS_None,
+
+		T3DS_West =				T2DS_Left,
+		T3DS_East =				T2DS_Right,
+
+		T3DS_Nether =			T2DS_Top,
+		T3DS_NetherWest =		T2DS_TopLeft,
+		T3DS_NetherEast =		T2DS_TopRight,
+
+		T3DS_Aether =			T2DS_Bottom,
+		T3DS_AetherWest =		T2DS_BottomLeft,
+		T3DS_AetherEast =		T2DS_BottomRight,
+
+		T3DS_North =			literal::B< 10000>::_,
+
+		T3DS_NorthWest =		literal::B< 10001>::_,
+		T3DS_NorthEast =		literal::B< 10010>::_,
+
+		T3DS_NorthNether =		literal::B< 10100>::_,
+		T3DS_NorthWestNether =	literal::B< 10101>::_,
+		T3DS_NorthEastNether =	literal::B< 10110>::_,
+
+		T3DS_NorthAether =		literal::B< 11000>::_,
+		T3DS_NorthWestAether =	literal::B< 11001>::_,
+		T3DS_NorthEastAether =	literal::B< 11010>::_,
+
+		T3DS_South =			literal::B<100000>::_,
+
+		T3DS_SouthWest =		literal::B<100001>::_,
+		T3DS_SouthEast =		literal::B<100010>::_,
+
+		T3DS_SouthNether =		literal::B<100100>::_,
+		T3DS_SouthWestNether =	literal::B<100101>::_,
+		T3DS_SouthEastNether =	literal::B<100110>::_,
+
+		T3DS_SouthAether =		literal::B<101000>::_,
+		T3DS_SouthWestAether =	literal::B<101001>::_,
+		T3DS_SouthEastAether =	literal::B<101010>::_,
+
+		T3DS_Minimal = T2DS_Left,
+		T3DS_Maximal = T2DS_Right,
+
+		CountTouch3DSides = literal::B<111111>::_ + 1
+	};
+	typedef Touch3DSide Touch3DFlags;
+
+	/// Abbreviated names for the sides described above
+	const extern char * Touch3DFlagNames[CountTouch3DSides];
+
+	/// Translates from Touch3DSide type to Moore3DNeighbor type
+	const extern signed char Touch3DSide_to_Moore3DNeighbor[CountTouch3DSides];
+	/// Translates from OrthogonalNeighbor type to Touch3DSide type
+	const extern Touch3DSide OrthogonalNeighbor_to_Touch3DSide[CountOrthogonalNeighbors];
+
+	/// Translates from Touch3DSide type to Moore3DNeighbor type
+	inline Moore3DNeighbor getMoore3DNeighbor (const Touch3DSide side)
+	{
+		return Moore3DNeighbor(Touch3DSide_to_Moore3DNeighbor[side]);
+	}
+	/** Retrieves the border/clamp flags for the specified number based on the specified minimum and maximum without branching
+	@param n The number to test
+	@param nMin The minimum bounded number
+	@param nMax The maximum bounded number
+	@returns Flags indicating whether the number is equal to the minimum value, the maximum value, both, or neither
+	*/
+	inline TouchStatus getTouchStatus(const int n, const int nMin, const int nMax)
+	{
+		using Ogre::bitmanip::testZero;
+		return TouchStatus((testZero(n - nMin) & 1) | ((testZero(nMax - n) << 1) & 2));
+	}
+	/// @returns The Touch2DSide based on the specified 2D touch flags
+	inline Touch2DSide getTouch2DSide (const TouchStatus tsX, const TouchStatus tsY)
+	{
+		return Touch2DSide(
+			tsX | (tsY << 2)
+		);
+	}
+	/// @returns The Touch3DSide based on the specified 3D touch flags
+	inline Touch3DSide getTouch3DSide (const TouchStatus tsX, const TouchStatus tsY, const TouchStatus tsZ)
+	{
+		return Touch3DSide(
+			tsX | (tsY << 2) | (tsZ << 4)
+		);
+	}
+
+	/** Conditionally clamps the pair of 2-dimensional coordinates based on a touch side
+	@remarks Clamps 'p' and/or 'q' to <0,N> according to the touch side
+	@param t2ds North, East, South or West clamping instruction
+	@param p The horizontal component that will be conditionally clamped
+	@param q The vertical component that will be conditionally clamped
+	@param N The maximum dimension to clamp either p/q to if the touch is south or east
+	*/
+	template< typename T >
+	void flushSides(const Touch2DSide t2ds, T & p, T & q, const T N)
+	{
+		register size_t i = t2ds;
+		if (i & 0x3)
+			p = ((i & 0x3) - 1) * N;
+		i >>= 2;
+		if (i & 0x3)
+			q = ((i & 0x3) - 1) * N;
+	}
 
 	/// Coordinate spaces used to express OhTSM positions, rays, and bounding-boxes in different ways
 	enum OverhangCoordinateSpace
@@ -113,7 +263,6 @@ namespace Ogre
 		NumOCS = 5
 	};
 
-	
 	/// Coordinate type used to represent discrete coordinates such as in a 3D voxel grid or to represent meta-regions in terrain tiles or page sections
 	template< typename T, typename Subclass >
 	class CellCoords
@@ -282,6 +431,9 @@ namespace Ogre
 		/// Which cell in discrete space are we currently in?
 		DiscreteCoords _cell;
 
+		/// Touch side of previous cell that was crossed-over into the current cell
+		Touch3DSide _t3ds;
+
 	public:
 		/// Property accessor for the discrete cell coordinates
 		class CellPropertyAccessor
@@ -291,13 +443,30 @@ namespace Ogre
 			inline operator const DiscreteCoords & () const { return *_pCell; }
 
 		protected:
-			inline void operator &= (DiscreteCoords & pCell) { _pCell = &pCell; }
+			/// Dependency injection of the root property
+			inline void operator &= (DiscreteCoords & cell) { _pCell = &cell; }
 
 		private:
 			DiscreteCoords * _pCell;
 
 			friend class DiscreteRayIterator;
 		} cell;
+
+		/// Property accessor for the neighbor of previous cell that was crossed-over into the current cell
+		class NeighborPropertyAccessor
+		{
+		public:
+			inline operator const Moore3DNeighbor () const { return getMoore3DNeighbor(*_pT3DS); }
+
+		protected:
+			/// Dependency injection of the root property
+			inline void operator &= (Touch3DSide & t3ds) { _pT3DS = &t3ds; }
+
+		private:
+			Touch3DSide * _pT3DS;
+
+			friend class DiscreteRayIterator;
+		} neighbor;
 
 		/** 
 		@param ptOrigin Origin of the ray
@@ -913,20 +1082,6 @@ namespace Ogre
 			else
 				return f;
 		}
-	}
-
-	/// Provides a way of specifying literal numbers in binary notation
-	namespace literal
-	{
-		template<unsigned long N>
-		struct B {
-			enum { _ = (N%10)+2*B<N/10>::_ };
-		} ;
-
-		template<>
-		struct B<0> {
-			enum { _ = 0 };
-		};
 	}
 
 	class BitSet

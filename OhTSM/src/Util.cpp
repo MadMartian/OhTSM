@@ -56,6 +56,150 @@ namespace Ogre
 		static const Real RATIONAL_ERROR = powf(10.0f, -static_cast< float > (std::numeric_limits< Real >::digits10) + 1.0f);
 	}
 
+	const char * Touch3DFlagNames[CountTouch3DSides] = {
+		"",
+		"W",
+		"E",
+		"WE",
+		"B",
+		"WB",
+		"EB",
+		"WEB",
+		"A",
+		"WA",
+		"EA",
+		"WEA",
+		"BA",
+		"WBA",
+		"EBA",
+		"WEBA",
+		"N",
+		"WN",
+		"EN",
+		"WEN",
+		"BN",
+		"WBN",
+		"EBN",
+		"WEBN",
+		"AN",
+		"WAN",
+		"EAN",
+		"WEAN",
+		"BAN",
+		"WBAN",
+		"EBAN",
+		"WEBAN",
+		"S",
+		"WS",
+		"ES",
+		"WES",
+		"BS",
+		"WBS",
+		"EBS",
+		"WEBS",
+		"AS",
+		"WAS",
+		"EAS",
+		"WEAS",
+		"BAS",
+		"WBAS",
+		"EBAS",
+		"WEBAS",
+		"NS",
+		"WNS",
+		"ENS",
+		"WENS",
+		"BNS",
+		"WBNS",
+		"EBNS",
+		"WEBNS",
+		"ANS",
+		"WANS",
+		"EANS",
+		"WEANS",
+		"BANS",
+		"WBANS",
+		"EBANS",
+		"WEBANS"
+	};
+	const signed char Touch3DSide_to_Moore3DNeighbor[CountTouch3DSides] =
+	{
+		Moore3NaN,
+		Moore3N_WEST,
+		Moore3N_EAST,
+		Moore3NaN,
+		Moore3N_BELOW,
+		Moore3N_BELOWWEST,
+		Moore3N_BELOWEAST,
+		Moore3N_BELOW,
+		Moore3N_ABOVE,
+		Moore3N_ABOVEWEST,
+		Moore3N_ABOVEEAST,
+		Moore3N_ABOVE,
+		Moore3NaN,
+		Moore3N_WEST,
+		Moore3N_EAST,
+		Moore3NaN,
+		Moore3N_NORTH,
+		Moore3N_NORTHWEST,
+		Moore3N_NORTHEAST,
+		Moore3N_NORTH,
+		Moore3N_BELOWNORTH,
+		Moore3N_BELOWNORTHWEST,
+		Moore3N_BELOWNORTHEAST,
+		Moore3N_BELOWNORTH,
+		Moore3N_ABOVENORTH,
+		Moore3N_ABOVENORTHWEST,
+		Moore3N_ABOVENORTHEAST,
+		Moore3N_ABOVENORTH,
+		Moore3N_NORTH,
+		Moore3N_NORTHWEST,
+		Moore3N_NORTHEAST,
+		Moore3N_NORTH,
+		Moore3N_SOUTH,
+		Moore3N_SOUTHWEST,
+		Moore3N_SOUTHEAST,
+		Moore3N_SOUTH,
+		Moore3N_BELOWSOUTH,
+		Moore3N_BELOWSOUTHWEST,
+		Moore3N_BELOWSOUTHEAST,
+		Moore3N_BELOWSOUTH,
+		Moore3N_ABOVESOUTH,
+		Moore3N_ABOVESOUTHWEST,
+		Moore3N_ABOVESOUTHEAST,
+		Moore3N_ABOVESOUTH,
+		Moore3N_SOUTH,
+		Moore3N_SOUTHWEST,
+		Moore3N_SOUTHEAST,
+		Moore3N_SOUTH,
+		Moore3NaN,
+		Moore3N_WEST,
+		Moore3N_EAST,
+		Moore3NaN,
+		Moore3N_BELOW,
+		Moore3N_BELOWWEST,
+		Moore3N_BELOWEAST,
+		Moore3N_BELOW,
+		Moore3N_ABOVE,
+		Moore3N_ABOVEWEST,
+		Moore3N_ABOVEEAST,
+		Moore3N_ABOVE,
+		Moore3NaN,
+		Moore3N_WEST,
+		Moore3N_EAST,
+		Moore3NaN
+	};
+
+	const Touch3DSide OrthogonalNeighbor_to_Touch3DSide[CountOrthogonalNeighbors] =
+	{
+		T3DS_North /*OrthoN_NORTH*/,
+		T3DS_East /*OrthoN_EAST*/,
+		T3DS_West /*OrthoN_WEST*/,
+		T3DS_South /*OrthoN_SOUTH*/,
+		T3DS_Aether /*OrthoN_ABOVE*/,
+		T3DS_Nether /*OrthoN_BELOW*/		
+	};
+
 	void DiscreteRayIterator::iterate()
 	{
 		_dist = (_fspan - _walker) / _incrementor;
@@ -67,23 +211,30 @@ namespace Ogre
 		)
 			_walker += _incrementor * _fspan;
 
+		size_t t3dsf = 0;
+
 		if (_walker.x >= _fspan
 			&& (_dist.x <= _dist.y && _dist.x <= _dist.z))
 		{
+			t3dsf |= (T3DS_East >> (_delta.mx & 1));
 			_cell.i += _delta.x * _ispan;
 			_walker.x -= _fspan;
 		}
 		else if (_walker.y >= _fspan
 			&& (_dist.y <= _dist.x && _dist.y <= _dist.z))
 		{
+			t3dsf |= (T3DS_Aether >> (_delta.my & 1));
 			_cell.j += _delta.y * _ispan;
 			_walker.y -= _fspan;
 		}
 		else
 		{
+			t3dsf |= (T3DS_South >> (_delta.mz & 1));
 			_cell.k += _delta.z * _ispan;
 			_walker.z -= _fspan;
 		}
+
+		_t3ds = (Touch3DSide)t3dsf;
 	}
 
 	Ogre::Vector3 DiscreteRayIterator::getPosition() const
@@ -146,6 +297,7 @@ namespace Ogre
 		_cell.k = (signed short)floor(ptOrigin.z);
 
 		cell &= _cell;
+		neighbor &= _t3ds;
 
 		_walker.x -= _cell.i;
 		_walker.y -= _cell.j;
