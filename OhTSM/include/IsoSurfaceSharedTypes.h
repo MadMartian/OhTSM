@@ -513,46 +513,6 @@ namespace Ogre
 			: origin(orig), direction(dir) {}
 	};
 
-	// Iterator pattern for walking along a ray in a variable sized cell grid based on LOD
-	class RayCellWalk : public DiscreteRayIterator
-	{
-	private:
-		/// Called when the LOD changes
-		void updateLOD(const unsigned nLOD);
-
-	public:
-		// Property accessor for the level of detail which determines the size of the cells walking
-		class LOD
-		{
-		public:
-			LOD();
-
-			unsigned operator = (const unsigned nLOD);
-			operator unsigned () const { return _lod; }
-
-		private:
-			unsigned _lod;
-			RayCellWalk * _pWalker;
-
-			friend class RayCellWalk;
-		} lod;
-
-		/** 
-		@param ptOrigin Origin of the ray
-		@param direction Direction of the ray
-		@param limit Optional search limit length of the ray or zero to specify no limit
-		*/
-		RayCellWalk(const Vector3 & ptOrigin, const Vector3 & direction, const Real limit = 0);
-
-		/// The LOD-adjusted real position in space
-		virtual Vector3 getPosition() const;
-
-		inline
-		operator bool () const 
-		{ 
-			return _limit_sq && LENGTH_SQ(_walker - _origin) < _limit_sq;
-		}
-	};
 }
 
 #endif

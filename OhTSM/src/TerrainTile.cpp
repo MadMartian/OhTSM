@@ -140,31 +140,27 @@ namespace Ogre
 		_bInit = true;
 	}
 
-	void TerrainTile::voxeliseTerrain( MetaHeightMap * const pMetaHeightMap )
+	void TerrainTile::voxeliseTerrain()
 	{
 		oht_assert_threadmodel(ThrMdl_Background);
 
 		Real min, max;
-		pMetaHeightMap->span(_x0, _y0, _x0 + _options.tileSize, _y0 + _options.tileSize, min, max);
+		_pPage->getMetaHeightMap() ->span(_x0, _y0, _x0 + _options.tileSize, _y0 + _options.tileSize, min, max);
 
 		const YLevel
 			ylmb0 = computeYLevel(min-1),
 			ylmbN = computeYLevel(max+1);
 
 		for (YLevel yli = ylmb0; yli <= ylmbN; ++yli)
-		{
 			MetaFragment::Container * pFrag = acquireMetaWorldFragment(TERRAIN_ENTITY_CHANNEL, yli);
-			pFrag->acquire< MetaFragment::Interfaces::Unique > ()
-				.addMetaObject(pMetaHeightMap);
-		}
 	}
 
-	void TerrainTile::unlinkeHeightMap( const MetaHeightMap * const pMetaHeightMap )
+	void TerrainTile::unlinkHeightMap()
 	{
 		MetaFragMap & map = _index2mapMF[TERRAIN_ENTITY_CHANNEL];
 		for (MetaFragMap::iterator i = map.begin(); i != _index2mapMF[TERRAIN_ENTITY_CHANNEL].end(); ++i)
 			i->second->acquire< MetaFragment::Interfaces::Unique > ()
-			.removeMetaObject(pMetaHeightMap);
+			.removeMetaObject(_pPage->getMetaHeightMap());
 	}
 
 	void TerrainTile::initialiseMWF( const Channel::Ident channel, SceneNode * pParentSceneNode, MetaFragment::Interfaces::const_Basic & basic, MetaFragment::Interfaces::Builder & builder )
@@ -214,274 +210,144 @@ namespace Ogre
 		}
 	}
 
-	const TerrainTile* TerrainTile::raySelectNeighbour(const Ray& ray, Real distanceLimit /* = 0 */) const
+	bool TerrainTile::rayIntersects( OverhangTerrainManager::RayResult & result, const OverhangTerrainManager::RayQueryParams & params, const Real distance, DiscreteRayIterator & i) const
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
-		const Real nWorldSize = _options.getTileWorldSize();
-		const size_t
-			nSize = _options.tileSize;
-
-		Ray modifiedRay(ray.getOrigin(), ray.getDirection());
-		// Move back half a square - if we're on the edge of the AABB we might
-		// miss the intersection otherwise; it's ok for everywhere else since
-		// we want the far intersection anyway
-		modifiedRay.setOrigin(modifiedRay.getPoint(-nWorldSize/nSize * 0.5f));
-
-		// transform into terrain space
-		Vector3 tPos = modifiedRay.getOrigin();
-		const Vector3 & tDir = modifiedRay.getDirection();
-
-		// Reposition at tile origin, height doesn't matter
-		// TODO: Check
-		tPos.x -= _pos.x;
-		tPos.y -= _pos.y;
-
-		// Translate and convert to terrain space
-		//tPos.x -= nWorldSize * 0.5;
-		//tPos.y -= nWorldSize * 0.5;
-		tPos /= nWorldSize;
-
-		// Discard rays with no lateral component
-		if (Math::RealEqual(modifiedRay.getDirection().x, 0.0f, 1e-4) && Math::RealEqual(modifiedRay.getDirection().y, 0.0f, 1e-4))
-			return 0;
-
-		Ray terrainRay(tPos, modifiedRay.getDirection());
-		// Intersect with boundary planes 
-		// Only collide with the positive (exit) side of the plane, because we may be
-		// querying from a point outside ourselves if we've cascaded more than once
-		Real dist = std::numeric_limits<Real>::max();
-		std::pair<bool, Real> intersectResult;
-		if (tDir.x < 0.0f)
+		const int nCellsPerCube = (int)_options.tileSize-1;
+		struct Registers
 		{
-			intersectResult = Math::intersects(terrainRay, Plane(Vector3::UNIT_X, Vector3::ZERO));
-			if (intersectResult.first && intersectResult.second < dist)
-				dist = intersectResult.second;
-		}
-		else if (tDir.x > 0.0f)
+			MetaFragment::Container * mf;
+
+			Registers() : mf (NULL) {}
+		};
+		Channel::Index< Registers > registers (_index2mapMF.descriptor);
+		Ray rayCubeRelDataGridSpace;
+
 		{
-			intersectResult = Math::intersects(terrainRay, Plane(Vector3::NEGATIVE_UNIT_X, Vector3(1,0,0)));
-			if (intersectResult.first && intersectResult.second < dist)
-				dist = intersectResult.second;
+			Vector3 direction = i.ray.getDirection();
+			OverhangTerrainManager::transformSpace(OCS_World, _options.alignment, OCS_DataGrid, direction, _options.cellScale);
+			direction.normalise();
+			rayCubeRelDataGridSpace.setDirection(direction);
 		}
-		if (tDir.y < 0.0f)
-		{
-			intersectResult = Math::intersects(terrainRay, Plane(Vector3::UNIT_Y, Vector3::ZERO));
-			if (intersectResult.first && intersectResult.second < dist)
-				dist = intersectResult.second;
-		}
-		else if (tDir.y > 0.0f)
-		{
-			intersectResult = Math::intersects(terrainRay, Plane(Vector3::NEGATIVE_UNIT_Y, Vector3(0,1,0)));
-			if (intersectResult.first && intersectResult.second < dist)
-				dist = intersectResult.second;
-		}
-
-
-		// discard out of range
-		if (distanceLimit && dist * nWorldSize > distanceLimit)
-			return 0;
-
-		Vector3 terrainIntersectPos = terrainRay.getPoint(dist);
-		Real x = terrainIntersectPos.x;
-		Real y = terrainIntersectPos.y;
-		Real dx = tDir.x;
-		Real dy = tDir.y;
-
-		// Never return diagonal directions, we will navigate those recursively anyway
-		if (Math::RealEqual(x, 1.0f, 1e-4f) && dx > 0)
-			return _vpInternalNeighbors[VonN_EAST];
-		else if (Math::RealEqual(x, 0.0f, 1e-4f) && dx < 0)
-			return _vpInternalNeighbors[VonN_WEST];
-		else if (Math::RealEqual(y, 1.0f, 1e-4f) && dy > 0)		// TODO: Used to be y = 1.0 for PlN_NORTH and y = 0.0 for PlN_SOUTH, verify change is acceptable
-			return _vpInternalNeighbors[VonN_SOUTH];
-		else if (Math::RealEqual(y, 0.0f, 1e-4f) && dy < 0)
-			return _vpInternalNeighbors[VonN_NORTH];
-
-		return 0;
-	}
-
-	bool TerrainTile::rayIntersects( OverhangTerrainManager::RayResult & result, const Ray& rayPageRelTerrainSpace, const OverhangTerrainManager::RayQueryParams & params, bool bCascade /*= false*/ ) const
-	{
-		oht_assert_threadmodel(ThrMdl_Main);
-		std::pair<bool, Real> intersection;
 
 		result.hit = false;
-		
-		intersection = rayPageRelTerrainSpace % _bbox;
-
-		if (!intersection.first)
-		{
-			if (bCascade)
-			{
-				const TerrainTile* pNeighbor = raySelectNeighbour(rayPageRelTerrainSpace, params.limit);
-				if (pNeighbor != NULL)
-					return pNeighbor->rayIntersects(result, rayPageRelTerrainSpace, params, bCascade);
-			}
-			return false;
-		}
-
 
 		OHT_DBGTRACE(
 			"\t\t\t@ " 
 			<< 
-				_pPage->getManager().toSpace(OCS_Terrain, OCS_World, rayPageRelTerrainSpace.getPoint(intersection.second))
+				i.ray.getPoint(i.distance)
 				+ _pPage->getPublic()->getPosition()
 		);
+		const Voxel::CubeDataRegionDescriptor * pMeta = _pPage->getFactory().getCubeDataRegionDescriptor();
+		const Real fHalfCellSize = (Real)pMeta->scale / 2.0f;
+		const Real fHalfCubeDimension = (Real)pMeta->dimensions / 2.0f;
+		const Real fLittleBitty = 1.0f / (Real)Voxel::FS_Span;
 
+		do
 		{
-			OHTDD_Coords(OCS_World, OCS_Terrain);
-			OHTDD_Color(DebugDisplay::MC_Blue);
-			OHTDD_Point(rayPageRelTerrainSpace.getPoint(intersection.second));
-			intersection = rayIntersectsMetaWorld(result, rayPageRelTerrainSpace, intersection.second, params);
-		}
-			
-		// Only traverse this test when there have been meta-ball intersections and at least a terrain quad intersection unless we are underground.
-		// The case is skipped is whenever the ray passes through this tile entirely above ground (original terrain-renderable height, not meta)
+			const DiscreteRayIterator i0 = i++;
 
-		if (!intersection.first && bCascade)
-		{
-			const TerrainTile * pNeighbor = raySelectNeighbour(rayPageRelTerrainSpace, params.limit);
-			if (pNeighbor != NULL)
-				return pNeighbor->rayIntersects(result, rayPageRelTerrainSpace, params, bCascade);
-		}
+			// Perform ray query test for each channel, one step
+			for (
+				SharedPtr< OverhangTerrainManager::RayQueryParams::Channels::AbstractIterator > pii = params.channels.begin(_index2mapMF);
+				*pii != *params.channels.end(_index2mapMF);
+				++*pii
+			)
+			{
+				// Grab a reference to the metafragments container
+				const MetaFragMap & mapMF = _index2mapMF[**pii];
 
-		result.hit = intersection.first;
-		result.position = rayPageRelTerrainSpace.getPoint(intersection.second);
+				// Pull-in reference to channel-specific local variables
+				Registers & r = registers[**pii];
+
+				// No meta-fragment, must initialize from Y-level for current channel
+				if (r.mf == NULL)
+				{
+					// Find fragment based on Y-level computed from ray iterator's position in space
+					MetaFragMap::const_iterator j = mapMF.find(computeYLevel(i0.intersection(fHalfCellSize).y));
+					if (j != mapMF.end())
+						r.mf = j->second;
+				}
+
+				{
+					OHTDD_Color(DebugDisplay::MC_Blue);
+					OHTDD_Point(i0.intersection);
+				}
+
+				// Can only perform query step if there is a meta-fragment for the current ray iteration
+				if (r.mf != NULL)
+				{
+					// Lock the meta-fragment for query
+					auto fragment = r.mf->acquire < MetaFragment::Interfaces::Unique > ();
+
+					// Test the intersection on the current fragment
+					{
+						Vector3
+							// Terrain-tile BBox intersection point relative to page
+							origin = i0.intersection;
+
+						// Translate the intersection point so it's relative to the first would-be meta-cube
+						const Vector3 base = getYLevelBounds(fragment.ylevel, OCS_World).getCenter();
+						origin -= base;
+						OverhangTerrainManager::transformSpace(OCS_World, _options.alignment, OCS_DataGrid, origin, _options.cellScale);
+
+						OHTDD_Cube(getYLevelBounds(fragment.ylevel, OCS_World));
+						OHTDD_Color(DebugDisplay::MC_Yellow);
+
+						// Clamp intersection point start to boundaries
+						origin.makeFloor(Vector3::ZERO + fHalfCubeDimension - fLittleBitty);
+						origin.makeCeil(Vector3::ZERO - fHalfCubeDimension + fLittleBitty);
+
+						// Update ray origin in data-grid space with origin relative to the first would-be meta-cube intersected
+						rayCubeRelDataGridSpace.setOrigin(origin);
+
+						OHTDD_Translate(-base);
+						OHTDD_Scale(1.0f / _options.cellScale);
+
+						std::pair< bool, Real >
+							intersection2 =
+								fragment.rayQuery(
+									rayCubeRelDataGridSpace,
+									(params.limit - i0.distance) / _options.cellScale
+								);
+
+						result.hit = intersection2.first;
+						result.position = i0.intersection(intersection2.second * _options.cellScale);
+						result.mwf = const_cast< MetaFragment::Container * > (r.mf);
+					}
+
+					if (result.hit)
+						return true;
+
+					if (!(i.neighbor < CountVonNeumannNeighbors))
+						r.mf = fragment.neighbor(i.neighbor);
+				} else
+				{
+					OHTDD_Color(DebugDisplay::MC_Yellow);
+					OHTDD_Cube(getYLevelBounds(computeYLevel(i0.intersection->y), OCS_World));
+				}
+			}
+
+			if (i.neighbor < CountVonNeumannNeighbors)
+			{
+				const TerrainTile * pNeighbor = _vpInternalNeighbors[i.neighbor];
+				if (pNeighbor != NULL)
+					return pNeighbor->rayIntersects(result, params, distance, i);
+				else
+					return false;
+			}
+
+		} while (!result.hit && !(i.neighbor < CountVonNeumannNeighbors));
 
 #ifdef _DEBUG
 		if (result.hit)
 		{
-			OHT_DBGTRACE("\t\tResult: " << (_pPage->getManager().toSpace(OCS_Terrain, OCS_World, result.position) + _pPage->getPublic()->getPosition()));
+			OHT_DBGTRACE("\t\tResult: " << result.position + _pPage->getPublic()->getPosition());
 		}
 #endif // _DEBUG
 
 		return result.hit;
 	}
-
-	std::pair< bool, Real > TerrainTile::rayIntersectsMetaWorld( OverhangTerrainManager::RayResult & result, const Ray & rayPageRelTerrainSpace, const Real tile, const OverhangTerrainManager::RayQueryParams & params ) const
-	{
-		oht_assert_threadmodel(ThrMdl_Single);
-
-		Vector3
-			// Terrain-tile BBox intersection point relative to page
-			origin = rayPageRelTerrainSpace.getPoint(tile),
-			direction = rayPageRelTerrainSpace.getDirection(),
-
-			p = origin;
-
-		OverhangTerrainManager::transformSpace(OCS_Terrain, _options.alignment, OCS_DataGrid, origin, _options.cellScale);
-		OverhangTerrainManager::transformSpace(OCS_Terrain, _options.alignment, OCS_DataGrid, direction, _options.cellScale);
-		direction.normalise();
-
-		// Translate to meta-cube region
-		OverhangTerrainManager::transformSpace(OCS_Terrain, _options.alignment, OCS_Terrain, p);
-
-		// Store the origin y-level for translation
-		const YLevel yl0 = computeYLevel(p.z);
-
-		// Data-grid space coordinates of the first would-be meta-cube that the ray would intersect
-		const AxisAlignedBox bboxOrigin = getYLevelBounds(yl0, OCS_DataGrid);
-
-		// Translate the intersection point so it's relative to the first would-be meta-cube
-		origin -= bboxOrigin.getMinimum();
-
-		OHTDD_Coords(OCS_Terrain, OCS_DataGrid);
-		OHTDD_Cube(bboxOrigin);
-		OHTDD_Translate(-bboxOrigin.getMinimum());
-		//Vector3 ptTerr = Vector3(_bbox.minimum.x, _bbox.minimum.y, 0);
-		//OverhangTerrainManager::transformSpace(OCS_Terrain, _options.alignment, OCS_DataGrid, ptTerr);
-		//OHTDD_Translate(ptTerr);
-		OHTDD_Color(DebugDisplay::MC_Yellow);
-
-		// Clamp intersection point start to boundaries
-		const Vector2 size = _bbox.maximum - _bbox.minimum;
-		origin.makeFloor(Vector3(size.x, std::numeric_limits< Real > ::max(), size.y) - 1.0f / (Real)Voxel::FS_Span);
-		origin.makeCeil(Vector3::ZERO);
-
-		const int nCellsPerCube = (int)_options.tileSize-1;
-
-		// Create a ray in data-grid space with origin relative to the first would-be meta-cube intersected
-		const Ray rayTileCubeIntersectRelDataGridSpace(origin, direction);
-		RayCellWalk walker(rayTileCubeIntersectRelDataGridSpace.getOrigin(), rayTileCubeIntersectRelDataGridSpace.getDirection(), params.limit / _options.cellScale);
-
-		walker.lod = 0;
-		while (
-			!walker->first &&
-				walker && 
-				walker.cell->i >=0 && walker.cell->i < nCellsPerCube && 
-				walker.cell->k >=0 && walker.cell->k < nCellsPerCube
-		)
-		{
-			const YLevel yl = YLevel::fromCell(walker.cell->j, nCellsPerCube) + yl0;	// DEPS: Y-Level computation
-
-			if (params.channels.size == 0)
-			{
-				for (Channel::Index< MetaFragMap >::const_iterator j = _index2mapMF.begin(); j != _index2mapMF.end(); ++j)
-					rayQueryWalkCell(result, walker, *j->value, yl, yl0, bboxOrigin, rayTileCubeIntersectRelDataGridSpace, nCellsPerCube);
-			} else
-			{
-				for (unsigned c = 0; c < params.channels.size; ++c)
-				{
-					Channel::Index< MetaFragMap >::const_iterator j = _index2mapMF.find(params.channels.array[c]);
-
-					if (j != _index2mapMF.end())
-						rayQueryWalkCell(result, walker, *j->value, yl, yl0, bboxOrigin, rayTileCubeIntersectRelDataGridSpace, nCellsPerCube);
-				}
-			}
-		}
-		result.hit = walker->first;
-
-		return std::pair< bool, Real > (walker->first, walker->second * _options.cellScale + tile);
-	}
-
-	void TerrainTile::rayQueryWalkCell(
-		OverhangTerrainManager::RayResult &result,
-		RayCellWalk &walker,
-		const MetaFragMap & mapMF,
-		const YLevel yl,
-		const YLevel yl0,
-		const AxisAlignedBox & bboxOrigin,
-		const Ray &rayTileCubeIntersectRelDataGridSpace,
-		const int nCellsPerCube
-	) const
-	{
-		MetaFragMap::const_iterator iMWF = mapMF.find(yl);	// TODO: Cache this result because yLevel changes very infrequently
-
-		OHT_DBGTRACE(yl);
-		if (iMWF != mapMF.end())
-		{
-			MetaFragment::Interfaces::Unique fragment = iMWF->second->acquireInterface();
-
-			const AxisAlignedBox bboxYL = getYLevelBounds(yl, OCS_DataGrid);
-			const Vector3 ptRel = bboxOrigin.getMinimum() - bboxYL.getMinimum();
-
-			// Translate ray so it's relative to the current meta-cube's position in data-grid space and coordinates
-			const Ray rayCubeRelDataGridSpace(
-				rayTileCubeIntersectRelDataGridSpace.getOrigin() + ptRel,
-				rayTileCubeIntersectRelDataGridSpace.getDirection()
-			);
-
-			OHTDD_Translate(ptRel);
-			fragment.rayQuery(
-				walker,
-				WorldCellCoords(
-					0,
-					DIFF(yl0, yl)*nCellsPerCube,	// DEPS: Y-Level computation
-					0
-				),
-				rayCubeRelDataGridSpace
-			);
-			result.mwf = iMWF->second;
-		} else
-		{
-			const Vector3 vwc((Real)walker.cell->i, (Real)walker.cell->j, (Real)walker.cell->k);
-			const AxisAlignedBox bboxCell(vwc, vwc + 1);
-			OHTDD_Cube(bboxCell);
-
-			++walker;
-		}
-	}
-
 
 	MetaFragment::Container * TerrainTile::acquireMetaWorldFragment( const Channel::Ident channel, const YLevel yl )
 	{
@@ -496,6 +362,8 @@ namespace Ogre
 			AxisAlignedBox bbox = getYLevelBounds(yl, OCS_World);
 			MetaFragment::Container * pMWF = _pPage->getFactory().getVoxelFactory(channel) ->createMetaFragment(bbox, yl);
 			MetaFragment::Interfaces::Unique fragment = pMWF->acquireInterface();
+
+			fragment.addMetaObject(_pPage->getMetaHeightMap());
 
 			_pPage->getManager().transformSpace(OCS_World, OCS_Vertex, bbox);
 

@@ -289,13 +289,13 @@ namespace Ogre
 
 
 	OverhangTerrainManager::RayQueryParams::RayQueryParams( const Real nLimit, const Channels & channels )
-		: limit(limit), channels(channels)
+		: limit(nLimit), channels(channels)
 	{
 
 	}
 
 	OverhangTerrainManager::RayQueryParams::RayQueryParams( const Real nLimit )
-		: limit(limit)
+		: limit(nLimit)
 	{
 
 	}
@@ -320,6 +320,67 @@ namespace Ogre
 		va_end(aenChannels);
 
 		return RayQueryParams(nLimit, channels);
+	}
+
+
+	OverhangTerrainManager::RayQueryParams::Channels::AbstractIterator::AbstractIterator( const AbstractIterator & copy )
+		: _current(copy._current)
+	{
+
+	}
+
+	OverhangTerrainManager::RayQueryParams::Channels::AbstractIterator::AbstractIterator( const AbstractIterator && move )
+		: _current(move._current)
+	{
+
+	}
+
+	OverhangTerrainManager::RayQueryParams::Channels::AbstractIterator::AbstractIterator()
+	{
+	}
+
+	void OverhangTerrainManager::RayQueryParams::Channels::AbstractIterator::iterate()
+	{
+		_current = step();
+	}
+
+	OverhangTerrainManager::RayQueryParams::Channels::ArrayIterator::ArrayIterator( const ArrayIterator & copy )
+	:	AbstractIterator(copy),
+		_size(copy._size), _array(copy._array), _descriptor(copy._descriptor),
+		_c(copy._c), _current(copy._current), OHT_CR_COPY(copy)
+	{
+
+	}
+
+	OverhangTerrainManager::RayQueryParams::Channels::ArrayIterator::ArrayIterator( const ArrayIterator && move )
+	:	AbstractIterator(static_cast< const AbstractIterator && > (move)),
+		_size(move._size), _array(move._array), _descriptor(static_cast< const Channel::Descriptor && > (move._descriptor)),
+		_c(move._c), _current(move._current), OHT_CR_COPY(move)
+	{
+
+	}
+
+	OverhangTerrainManager::RayQueryParams::Channels::ArrayIterator::ArrayIterator( const Channel::Descriptor & descriptor, const Channel::Ident * const array, const size_t size, const size_t c /*= 0*/ )
+	:	AbstractIterator(),
+		_size(size), _array(array), _descriptor(descriptor),
+		_c (c)
+	{
+		OHT_CR_INIT();
+		iterate();
+	}
+
+	Channel::Ident OverhangTerrainManager::RayQueryParams::Channels::ArrayIterator::step()
+	{
+		OHT_CR_START();
+
+		while (_c++ < _size)
+		{
+			OHT_CR_RETURN(CRS_Default, Channel::Ident(_array[_c]));
+		}
+
+		return Channel::Ident();
+
+		OHT_CR_END();
 	}
 
 }

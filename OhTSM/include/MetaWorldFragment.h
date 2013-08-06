@@ -122,7 +122,7 @@ namespace Ogre
 			@param ylevel the Y-level of the meta fragment
 			*/
 			Core(const Voxel::MetaVoxelFactory * pFactory, Voxel::CubeDataRegion * pBlock, const YLevel & ylevel);
-			~Core();
+			virtual ~Core();
 
 		public: // Simple accessors
 			bool isInitialized() const;
@@ -163,11 +163,10 @@ namespace Ogre
 
 		public: // Mutation phase
 			/** Perform a ray query on this meta fragment
-			@param walker The ray walker object that iterates through meta fragments and cells until a triangle is hit
-			@param wcctr The current search cell coordinates in world space
 			@param ray The ray we're conducting the query for
+			@param limit The maximum distance away from the ray origin to query
 			*/
-			void rayQuery(RayCellWalk & walker, const WorldCellCoords & wcctr, const Ray & ray);
+			std::pair< bool, Real > rayQuery(const Ray & ray, const Real limit);
 
 			/** Rebuild the isosurface renderable
 			@remarks This does not actually do any heavy-lifting, it just sets flags in preparation for rebuilding the isosurface which is done elsewhere
@@ -217,6 +216,12 @@ namespace Ogre
 
 			/// Determines which of this meta-fragment's neighbors have higher resolution and require stitching (transition cells)
 			Touch3DFlags getNeighborFlags( const unsigned nLOD ) const;
+
+			/// Retrieve a const neighbor
+			const Container * neighbor(const Moore3DNeighbor enNeighbor) const;
+
+			// Retrieve a mutable neighbor
+			Container * neighbor(const Moore3DNeighbor enNeighbor);
 		};
 
 		/// Set of thread-safe interfaces that behave as distinct facets to the nature of a meta-fragment
@@ -311,6 +316,9 @@ namespace Ogre
 				/// @see Core::isInitialized()
 				bool isInitialized () const { return _core->isInitialized(); }
 
+				/// @see Core::neighbor()
+				const MetaFragment::Container * neighbor(const Moore3DNeighbor enNeighbor) const { return _core->neighbor(enNeighbor); }
+
 				friend Basic_base< const Core, const Post, const IsoSurfaceRenderable >;
 			};
 
@@ -389,7 +397,7 @@ namespace Ogre
 
 				/// @see Core::rayQuery(...)
 				inline
-				void rayQuery(RayCellWalk & walker, const WorldCellCoords & wcctr, const Ray & ray) { return _core->rayQuery(walker, wcctr, ray); }
+				std::pair< bool, Real > rayQuery(const Ray & ray, const Real limit) { return _core->rayQuery(ray, limit); }
 				
 				/// @see Core::updateSurface()
 				inline
@@ -418,6 +426,9 @@ namespace Ogre
 				/// @see Core::clearMetaObjects()
 				inline
 				void clearMetaObjects() { _core->clearMetaObjects(); }
+
+				/// @see Core::neighbor()
+				MetaFragment::Container * neighbor(const Moore3DNeighbor enNeighbor) { return _core->neighbor(enNeighbor); }
 			};
 
 			/// The facet for exclusive mutable read/write access to a meta-fragment
@@ -517,7 +528,7 @@ namespace Ogre
 
 			/// Creates new MetaFragment, as well as IsoSuface and grid as needed.
 			Container(const Voxel::MetaVoxelFactory * pFact, Voxel::CubeDataRegion * pDG, const YLevel yl = YLevel());
-			~Container();
+			virtual ~Container();
 
 			template< typename INTERFACE >
 			INTERFACE acquire()

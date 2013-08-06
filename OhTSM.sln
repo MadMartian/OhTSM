@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 11.00
 # Visual Studio 2010
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "OhTSM", "OhTSM\OhTSM.vcxproj", "{4DE1181F-608A-41A8-AE45-1A2D8435A2BE}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Plugin_OhTSM", "OhTSM\OhTSM.vcxproj", "{4DE1181F-608A-41A8-AE45-1A2D8435A2BE}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Example", "Example\Example.vcxproj", "{4A134EC4-D70C-422D-BA15-ED8D07810516}"
 	ProjectSection(ProjectDependencies) = postProject

@@ -76,9 +76,9 @@ namespace Ogre
 	};
 
 	/** Main top-level and base configuration for OhTSM */
-    class _OverhangTerrainPluginExport OverhangTerrainOptions
-    {
-    public:
+	class _OverhangTerrainPluginExport OverhangTerrainOptions
+	{
+	public:
 		/** Channel-specific OhTSM configuration */
 		class _OverhangTerrainPluginExport ChannelOptions
 		{
@@ -106,21 +106,21 @@ namespace Ogre
 		/// The set of channel-specific configuration options
 		Channel::Index< ChannelOptions > channels;
 
-        OverhangTerrainOptions();
+		OverhangTerrainOptions();
 
 		/// The primary camera, used for error metric calculation and page choice
 		const Camera* primaryCamera;
 
 		/// The axis that terrain is aligned upon
 		OverhangTerrainAlignment alignment;
-        /// The size of one edge of a terrain page, in vertices
-        size_t pageSize;
-        /// The size of one edge of a terrain tile, in vertices
-        size_t tileSize; 
-        /// The scale factor to apply to the terrain (each vertex is 1 unscaled unit
-        /// away from the next, and height is from 0 to 1)
-        /// NOTE: Terrain in the world is aligned along the x/z plane
-        Real cellScale, heightScale;
+		/// The size of one edge of a terrain page, in vertices
+		size_t pageSize;
+		/// The size of one edge of a terrain tile, in vertices
+		size_t tileSize;
+		/// The scale factor to apply to the terrain (each vertex is 1 unscaled unit
+		/// away from the next, and height is from 0 to 1)
+		/// NOTE: Terrain in the world is aligned along the x/z plane
+		Real cellScale, heightScale;
 		/// Whether each individual terrain tile gets a separate material
 		bool materialPerTile;
 		/// Whether to automatically save dirty pages upon unloading
@@ -147,7 +147,7 @@ namespace Ogre
 		/// Used for serialization
 		static const uint32 CHUNK_ID;
 		static const uint16 CHUNK_VERSION;
-    };
+	};
 }
 
 #endif

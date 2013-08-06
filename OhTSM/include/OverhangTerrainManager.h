@@ -97,6 +97,112 @@ namespace Ogre
 				*/
 				Channels(const std::list< Channel::Ident > & channels);
 				~Channels();
+
+				class _OverhangTerrainPluginExport AbstractIterator : public std::iterator< std::input_iterator_tag, Channel::Ident >
+				{
+				private:
+					Channel::Ident _current;
+
+				protected:
+					virtual Channel::Ident step () = 0;
+
+					void iterate ();
+
+				public:
+					AbstractIterator (const AbstractIterator & copy);
+					AbstractIterator (const AbstractIterator && move);
+					AbstractIterator ();
+
+					inline const Channel::Ident & operator * () const { return _current; }
+					inline const Channel::Ident * operator -> () const { return &_current; }
+
+					inline bool operator == (const AbstractIterator & other) const { return _current == other._current; }
+					inline bool operator != (const AbstractIterator & other) const { return _current != other._current; }
+
+					AbstractIterator & operator ++ ()
+					{
+						iterate();
+						return *this;
+					}
+
+					AbstractIterator * operator ++ (int)
+					{
+						AbstractIterator * pOld = this;
+						iterate();
+						return this;
+					}
+				};
+
+				class _OverhangTerrainPluginExport ArrayIterator : public AbstractIterator
+				{
+				private:
+					const Channel::Descriptor _descriptor;
+
+					const size_t _size;
+					const Channel::Ident * const _array;
+
+					enum CRState
+					{
+						CRS_Default = 1
+					};
+					OHT_CR_CONTEXT;
+
+					size_t _c;
+					Channel::Ident _current;
+
+				protected:
+					virtual Channel::Ident step();
+
+				public:
+					ArrayIterator (const ArrayIterator & copy);
+					ArrayIterator (const ArrayIterator && move);
+
+					ArrayIterator (const Channel::Descriptor & descriptor, const Channel::Ident * const array, const size_t size, const size_t c = 0);
+				};
+
+				template< typename INDEX >
+				class IndexIterator : public AbstractIterator
+				{
+				private:
+					const INDEX & _index;
+					typename INDEX::const_iterator _i;
+
+				protected:
+					virtual Channel::Ident step()
+					{
+						return _i++ ->channel;
+					}
+
+				public:
+					IndexIterator (const IndexIterator & copy)
+						: AbstractIterator(copy), _index(copy._index), _i(copy._i) {}
+					IndexIterator (const IndexIterator && move)
+						: AbstractIterator(static_cast< AbstractIterator && > (move)), _index(move._index), _i(static_cast< INDEX::const_iterator && > (move._i)) {}
+					IndexIterator(const INDEX & index, typename INDEX::const_iterator current)
+						: AbstractIterator(), _index(index), _i(current)
+					{
+						iterate();
+					}
+				};
+
+				template< typename INDEX >
+				SharedPtr< AbstractIterator > begin(const INDEX & index) const
+				{
+					if (this->array == NULL)
+						return SharedPtr< AbstractIterator > (new IndexIterator< INDEX > (index, index.begin()));
+					else
+						return SharedPtr< AbstractIterator > (new ArrayIterator(index.descriptor, this->array, this->size));
+				}
+
+				template< typename INDEX >
+				SharedPtr< AbstractIterator > end(const INDEX & index) const
+				{
+					if (this->array == NULL)
+						return SharedPtr< AbstractIterator > (new IndexIterator< INDEX > (index, index.end()));
+					else
+						return SharedPtr< AbstractIterator > (new ArrayIterator(index.descriptor, this->array, this->size, this->size));
+				}
+
 			} channels;
 
 		private:
@@ -127,7 +233,7 @@ namespace Ogre
 		{
 			/// Whether an intersection occurred
 			bool hit;
-			/// Position at which the intersection occurred
+			/// World-space position at which the intersection occurred
 			Vector3 position;
 			/// Meta-fragment where the intersection occurred
 			MetaFragment::Container * mwf;
@@ -259,6 +365,40 @@ namespace Ogre
 		inline Vector3 toSpace( const YLevel yl, const OverhangCoordinateSpace encsTo ) const
 		{
 			return toSpace(OCS_World, encsTo, (Vector3::ZERO + yl) * options.getTileWorldSize());
+		}
+
+		/** Returns the transformed ray in the specified space
+		@param encsFrom Source coordinate system
+		@param enalAlignment The world alignment of terrain in the scene
+		@param encsTo Destination coordinate system
+		@param rayIn The source ray
+		@param nScale Scale of the unit distance between terrain vertices
+		*/
+		static inline
+		void transformSpace (const OverhangCoordinateSpace encsFrom, const OverhangTerrainAlignment enalAlignment, const OverhangCoordinateSpace encsTo, Ray & rayIn, const Real nScale = 1.0)
+		{
+			Vector3
+				origin = rayIn.getOrigin(),
+				direction = rayIn.getDirection();
+
+			transformSpace(encsFrom, enalAlignment, encsTo, origin, nScale);
+			transformSpace(encsFrom, enalAlignment, encsTo, direction, nScale);
+			direction.normalise();
+
+			rayIn.setOrigin(origin);
+			rayIn.setDirection(direction);
+		}
+
+		/** Returns the transformed ray of the one specified using the main top-level configuration options
+		@param encsFrom Source coordinate system
+		@param encsTo Destination coordinate system
+		@param bboxIn The source ray
+		@returns A ray representation of the one specified in the destination coordinate system */
+		inline Ray toSpace(const OverhangCoordinateSpace encsFrom, const OverhangCoordinateSpace encsTo, const Ray & ray) const
+		{
+			Ray vRet = ray;
+			transformSpace(encsFrom, options.alignment, encsTo, vRet, options.cellScale);
+			return vRet;
 		}
 
 	private:

@@ -200,66 +200,107 @@ namespace Ogre
 		T3DS_Nether /*OrthoN_BELOW*/		
 	};
 
+	Ray & clamp(Ray & ray, const float fTolerance)
+	{
+		Vector3 vDir = ray.getDirection();
+
+		if (vDir.x > -fTolerance && vDir.x < +fTolerance)
+			vDir.x = vDir.x < 0 ? -fTolerance : +fTolerance;
+
+		if (vDir.y > -fTolerance && vDir.y < +fTolerance)
+			vDir.y = vDir.y < 0 ? -fTolerance : +fTolerance;
+
+		if (vDir.z > -fTolerance && vDir.z < +fTolerance)
+			vDir.z = vDir.z < 0 ? -fTolerance : +fTolerance;
+
+		ray.setDirection(vDir);
+		return ray;
+	}
+
 	void DiscreteRayIterator::iterate()
 	{
-		_dist = (_fspan - _walker) / _incrementor;
+		_dist = (1.0f - _walker) / _incrementor;
 
 		while (
-			_walker.x < _fspan &&
-			_walker.y < _fspan &&
-			_walker.z < _fspan
+			_walker.x < 1 &&
+			_walker.y < 1 &&
+			_walker.z < 1
 		)
-			_walker += _incrementor * _fspan;
+		{
+			++_ldist;
+			_walker += _incrementor;
+		}
 
 		size_t t3dsf = 0;
 
-		if (_walker.x >= _fspan
+		if (_walker.x >= 1.0f
 			&& (_dist.x <= _dist.y && _dist.x <= _dist.z))
 		{
 			t3dsf |= (T3DS_East >> (_delta.mx & 1));
-			_cell.i += _delta.x * _ispan;
-			_walker.x -= _fspan;
+			_cell.i += _delta.x;
+			_walker.x -= 1.0f;
+			_off = _walker.x / _incrementor.x;
 		}
-		else if (_walker.y >= _fspan
+		else if (_walker.y >= 1.0f
 			&& (_dist.y <= _dist.x && _dist.y <= _dist.z))
 		{
 			t3dsf |= (T3DS_Aether >> (_delta.my & 1));
-			_cell.j += _delta.y * _ispan;
-			_walker.y -= _fspan;
+			_cell.j += _delta.y;
+			_walker.y -= 1.0f;
+			_off = _walker.y / _incrementor.y;
 		}
 		else
 		{
 			t3dsf |= (T3DS_South >> (_delta.mz & 1));
-			_cell.k += _delta.z * _ispan;
-			_walker.z -= _fspan;
+			_cell.k += _delta.z;
+			_walker.z -= 1.0f;
+			_off = _walker.z / _incrementor.z;
 		}
 
 		_t3ds = (Touch3DSide)t3dsf;
 	}
 
-	Ogre::Vector3 DiscreteRayIterator::getPosition() const
+	void DiscreteRayIterator::PositionPropertyAccessor::updatePosition(const Real offset /*= 0.0f*/) const
 	{
-		Vector3 v;
+		_vector = _pRay->getPoint(*_pLDist * *_pfSpan + offset);
+	}
+	void DiscreteRayIterator::PositionPropertyAccessor::DI (const Ray & ray, const Real & fLDist, const Real & fspan)
+	{
+		_pRay = &ray;
+		_pLDist = &fLDist;
+		_pfSpan = &fspan;
+	}
 
-		v.x = (Real)_cell.i + _walker.x * (Real)_delta.x;
-		v.y = (Real)_cell.j + _walker.y * (Real)_delta.y;
-		v.z = (Real)_cell.k + _walker.z * (Real)_delta.z;
+	void DiscreteRayIterator::IntersectionPropertyAccessor::DI( const Ray & ray, const Real & fLDist, const Real & off, const Real & fspan )
+	{
+		PositionPropertyAccessor::DI(ray, fLDist, fspan);
+		_pOff = & off;
+		_pfSpan = & fspan;
+	}
 
-		return v;
+	void DiscreteRayIterator::IntersectionPropertyAccessor::updatePosition(const Real offset /*= 0.0f*/) const
+	{
+		PositionPropertyAccessor::updatePosition(offset - *_pOff * *_pfSpan);
+	}
+
+	void DiscreteRayIterator::LinearDistancePropertyAccessor::DI( const Real & fLDist, const Real & fSpan )
+	{
+		_pLDist = &fLDist;
+		_pfSpan = &fSpan;
 	}
 
 	bool DiscreteRayIterator::operator == (const DiscreteRayIterator & other) const
 	{
 		return 
-			_origin.positionEquals(other._origin) &&
-			_incrementor.directionEquals(other._incrementor, Radian(0.0000001f)) &&
+			ray.getOrigin().positionEquals(other.ray.getOrigin()) &&
+			_incrementor.directionEquals(other._incrementor, Radian(std::numeric_limits< Real >::epsilon())) &&
 			_cell == other._cell;
 	}
 
 	bool DiscreteRayIterator::operator != (const DiscreteRayIterator & other) const
 	{
 		return 
-			!_origin.positionEquals(other._origin) ||
+			!ray.getOrigin().positionEquals(other.ray.getOrigin()) ||
 			!_incrementor.directionEquals(other._incrementor, Radian(std::numeric_limits< Real >::epsilon())) ||
 			_cell != other._cell;
 	}
@@ -277,27 +318,38 @@ namespace Ogre
 		return old;
 	}
 
-	DiscreteRayIterator::DiscreteRayIterator( const Vector3 & ptOrigin, const Vector3 & direction, const Real limit /*=0*/) 
-	:	_origin(ptOrigin),
-		_walker(ptOrigin),
-		_limit_sq(limit*limit),
+	DiscreteRayIterator::DiscreteRayIterator( const Ray & ray, const Real fCellSize, const Vector3 & offset /*= Vector3::ZERO */ )
+	:	ray(ray),
+		offset(offset),
+		_walker((ray.getOrigin() - offset) / fCellSize),
 		_incrementor(
-			Math::Abs(direction.x),
-			Math::Abs(direction.y),
-			Math::Abs(direction.z)
+			Math::Abs(ray.getDirection().x),
+			Math::Abs(ray.getDirection().y),
+			Math::Abs(ray.getDirection().z)
 		),
-		_intersection(false, 0.0f)
+		_ldist(0),
+		_off(0),
+		_t3ds(T3DS_None),
+		_fspan(fCellSize),
+		_ispan((signed long)fCellSize)
 	{
+		const Vector3
+			direction = ray.getDirection(),
+			origin = ray.getOrigin() - offset;
+
 		_delta.x = direction.x < 0.0f ? -1 : 1;
 		_delta.y = direction.y < 0.0f ? -1 : 1;
 		_delta.z = direction.z < 0.0f ? -1 : 1;
 
-		_cell.i = (signed short)floor(ptOrigin.x);
-		_cell.j = (signed short)floor(ptOrigin.y);
-		_cell.k = (signed short)floor(ptOrigin.z);
+		_delta.mx = (((_delta.x + 1) >> 1) - 1);
+		_delta.my = (((_delta.y + 1) >> 1) - 1);
+		_delta.mz = (((_delta.z + 1) >> 1) - 1);
 
-		cell &= _cell;
-		neighbor &= _t3ds;
+		_cell.i = (signed short)floor(origin.x / fCellSize);
+		_cell.j = (signed short)floor(origin.y / fCellSize);
+		_cell.k = (signed short)floor(origin.z / fCellSize);
+
+		DI();
 
 		_walker.x -= _cell.i;
 		_walker.y -= _cell.j;
@@ -312,7 +364,27 @@ namespace Ogre
 
 		OgreAssert(_walker.x >= (short)0 && _walker.y >= (short)0 && _walker.z >= (short)0, "Walker must be positive");
 
-		OHT_DBGTRACE("RayCellWalk: delta=<" << _delta.x << ',' << _delta.y << ',' << _delta.z << ">, wcell=" << _cell << ", walker=" << _walker << ", inc=" << _incrementor);
+		OHT_DBGTRACE("DiscreteRayIterator: delta=<" << _delta.x << ',' << _delta.y << ',' << _delta.z << ">, wcell=" << _cell << ", walker=" << _walker << ", inc=" << _incrementor);
+	}
+
+	DiscreteRayIterator::DiscreteRayIterator( const DiscreteRayIterator & copy )
+	: _walker(copy._walker), _incrementor(copy._incrementor), _delta(copy._delta), _dist(copy._dist), _fspan(copy._fspan), _ldist(copy._ldist), _off(copy._off), _ispan(copy._ispan), _cell(copy._cell), _t3ds(copy._t3ds), ray(copy.ray), offset(copy.offset)
+	{
+		DI();
+	}
+
+	DiscreteRayIterator::DiscreteRayIterator( DiscreteRayIterator && move )
+	: _walker(move._walker), _incrementor(move._incrementor), _delta(move._delta), _dist(move._dist), _fspan(move._fspan), _ldist(move._ldist), _off(move._off), _ispan(move._ispan), _cell(move._cell), _t3ds(move._t3ds), ray(move.ray), offset(move.offset)
+	{
+		DI();
+	}
+
+	void DiscreteRayIterator::DI()
+	{
+		position.DI(ray, _ldist, _fspan);
+		intersection.DI(ray, _ldist, _off, _fspan);
+		distance.DI(_ldist, _fspan);
+		neighbor &= _t3ds;
 	}
 
 	std::pair< bool, Real > BBox2D::intersects( const Ray & ray, const OverhangCoordinateSpace ocs /*= OCS_Terrain*/ ) const
@@ -378,5 +450,7 @@ namespace Ogre
 	{
 
 	}
+
+
 
 }

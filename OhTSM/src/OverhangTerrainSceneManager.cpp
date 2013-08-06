@@ -77,15 +77,15 @@ Transvoxel conceived by Eric Lengyel (http://www.terathon.com/voxels/)
 
 namespace Ogre
 {
-    //-------------------------------------------------------------------------
-    //-------------------------------------------------------------------------
-    OverhangTerrainSceneManager::OverhangTerrainSceneManager(const String& name) 
+	//-------------------------------------------------------------------------
+	//-------------------------------------------------------------------------
+	OverhangTerrainSceneManager::OverhangTerrainSceneManager(const String& name)
 		: SceneManager(name), _pTerrainManager(NULL),
 		_pRoot(NULL)
-    {
-        //setDisplaySceneNodes( true );
-        //setShowBoxes( true );
-    }
+	{
+		//setDisplaySceneNodes( true );
+		//setShowBoxes( true );
+	}
 	//-------------------------------------------------------------------------
 	const String& OverhangTerrainSceneManager::getTypeName(void) const
 	{
@@ -95,51 +95,51 @@ namespace Ogre
 	void OverhangTerrainSceneManager::shutdown(void)
 	{
 	}
-    //-------------------------------------------------------------------------
-    OverhangTerrainSceneManager::~OverhangTerrainSceneManager()
-    {
+	//-------------------------------------------------------------------------
+	OverhangTerrainSceneManager::~OverhangTerrainSceneManager()
+	{
 		shutdown();
-    }
+	}
 
-    //-------------------------------------------------------------------------
-    void OverhangTerrainSceneManager::clearScene(void)
-    {
-        SceneManager::clearScene();
-        // SceneManager has destroyed our root
-        _pRoot = NULL;
-    }
+	//-------------------------------------------------------------------------
+	void OverhangTerrainSceneManager::clearScene(void)
+	{
+		SceneManager::clearScene();
+		// SceneManager has destroyed our root
+		_pRoot = NULL;
+	}
 
 	void OverhangTerrainSceneManager::attachPage( PageSection * page )
 	{
 		_pRoot->addChild(page->getSceneNode());
 	}
 
-    //-------------------------------------------------------------------------
-    Camera* OverhangTerrainSceneManager::createCamera( const String &name )
-    {
-        Camera* c = SceneManager::createCamera(name);
+	//-------------------------------------------------------------------------
+	Camera* OverhangTerrainSceneManager::createCamera( const String &name )
+	{
+		Camera* c = SceneManager::createCamera(name);
 
-        // Set primary camera, if none
-        if (!_options.primaryCamera)
-            setPrimaryCamera(c);
+		// Set primary camera, if none
+		if (!_options.primaryCamera)
+			setPrimaryCamera(c);
 
-        return c;
+		return c;
 
-    }
-    //-------------------------------------------------------------------------
-    void OverhangTerrainSceneManager::setPrimaryCamera(const Camera* cam)
-    {
-        _options.primaryCamera = cam;
-    }
-    //-------------------------------------------------------------------------
-    RaySceneQuery* 
-        OverhangTerrainSceneManager::createRayQuery(const Ray& ray, unsigned long mask)
-    {
-        OverhangTerrainRaySceneQuery *trsq = new OverhangTerrainRaySceneQuery(this);
-        trsq->setRay(ray);
-        trsq->setQueryMask(mask);
-        return trsq;
-    }
+	}
+	//-------------------------------------------------------------------------
+	void OverhangTerrainSceneManager::setPrimaryCamera(const Camera* cam)
+	{
+		_options.primaryCamera = cam;
+	}
+	//-------------------------------------------------------------------------
+	RaySceneQuery*
+		OverhangTerrainSceneManager::createRayQuery(const Ray& ray, unsigned long mask)
+	{
+		OverhangTerrainRaySceneQuery *trsq = new OverhangTerrainRaySceneQuery(this);
+		trsq->setRay(ray);
+		trsq->setQueryMask(mask);
+		return trsq;
+	}
 
 	void OverhangTerrainSceneManager::initialise()
 	{

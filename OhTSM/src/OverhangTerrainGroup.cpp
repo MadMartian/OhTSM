@@ -789,151 +789,66 @@ namespace Ogre
 
 	OverhangTerrainManager::RayResult OverhangTerrainGroup::rayIntersects( Ray ray, const OverhangTerrainManager::RayQueryParams & params ) const
 	{
-		int16 nCurrPageY, nCurrPageX;
-
-		{ // Clamp the ray to a coarser precision and so that all components are non-zero
-			Vector3 vDir = ray.getDirection();
-			const Real fTolerance = std::numeric_limits< Real >::epsilon() * 10000.0f;
-
-			if (vDir.x > -fTolerance && vDir.x < +fTolerance)
-				vDir.x = vDir.x < 0 ? -fTolerance : +fTolerance;
-
-			if (vDir.y > -fTolerance && vDir.y < +fTolerance)
-				vDir.y = vDir.y < 0 ? -fTolerance : +fTolerance;
-
-			if (vDir.z > -fTolerance && vDir.z < +fTolerance)
-				vDir.z = vDir.z < 0 ? -fTolerance : +fTolerance;
-
-			ray.setDirection(vDir);
-		}
-
-		toSlotPosition(ray.getOrigin(), nCurrPageX, nCurrPageY);
-		TerrainSlot* pSlot = getTerrainSlot(nCurrPageX, nCurrPageY);	// May be NULL
 		RayResult result(false, Vector3::ZERO, NULL);
 
-		OHT_DBGTRACE("TEST Ray: " << ray.getOrigin() << ":" << ray.getDirection() << ", starting at slot [" << nCurrPageX << "x" << nCurrPageY << "]");
-		const Vector3 
-			vPageWalkDir = toSpace(OCS_World, OCS_PagingStrategy, ray.getDirection());
+		const float fTolerance = std::numeric_limits< Real >::epsilon() * 10000.0f;
 
-		Vector2 vWalkPage;
+		clamp(ray, fTolerance);
+		OHT_DBGTRACE("TEST Ray: " << ray.getOrigin() << ":" << ray.getDirection());
+		const Real
+			fPageOffset = options.getPageWorldSize() / 2.0f;
+
+		int16 py, px;
+		TerrainSlot * pSlot0 = NULL, * pSlot;
+
+		toSlotPosition(ray.getOrigin(), px, py);
+		pSlot0 = NULL;
+
+		for (DiscreteRayIterator i = DiscreteRayIterator::from(ray, options.getPageWorldSize(), -Vector3(1, 0, 1) * (options.getPageWorldSize() / 2.0f));
+			i < params.limit;
+			++i
+		)
 		{
-			Vector3				// Normalise the offset  based on the world size of a square, and rebase to the bottom left
-				vTmp = toSpace(OCS_World, OCS_PagingStrategy, (ray.getOrigin() - computeTerrainSlotPosition(nCurrPageX, nCurrPageY)) / options.getPageWorldSize()) + 0.5f; // Half-page offset starts at corner
-		
-			vWalkPage.x = (vTmp.x < 0 ? 1.0f + vTmp.x : vTmp.x);
-			vWalkPage.y = (vTmp.y < 0 ? 1.0f + vTmp.y : vTmp.y);
-		}
-
-		// this is our counter moving away from the 'current' square
-		Vector2 vInc (
-			Math::Abs(vPageWalkDir.x), 
-			Math::Abs(vPageWalkDir.y)
-		);
-		const int16 
-			nDirX = vPageWalkDir.x > 0.0f ? 1 : -1,
-			nDirY = vPageWalkDir.y > 0.0f ? 1 : -1;
-
-		// We're always counting from 0 to 1 regardless of what direction we're heading
-		if (nDirX < 0)
-			vWalkPage.x = 1.0f - vWalkPage.x;
-		if (nDirY < 0)
-			vWalkPage.y = 1.0f - vWalkPage.y;
-
-		// find next slot
-		bool bSearching = true;
-		int nGapCount = 0;
-
-		if (Math::RealEqual(vInc.x, 0.0f) && Math::RealEqual(vInc.y, 0.0f))
-			bSearching = false;
-
-		while(bSearching)
-		{
-			while ( (pSlot == NULL || pSlot->instance == NULL || !pSlot->canRead()) && bSearching)
+			switch (i.neighbor)
 			{
-				++nGapCount;
-				/// if we don't find any filled slot in 6 traversals, give up
-				if (nGapCount > 6)
-				{
-					bSearching = false;
-					break;
-				}
-
-				// find next slot
-				const Vector2 vWalkSlot0 = vWalkPage;
-
-				while (vWalkPage.x < 1.0f && vWalkPage.y < 1.0f)
-					vWalkPage += vInc;
-
-				if (vWalkPage.x >= 1.0f && vWalkPage.y >= 1.0f)
-				{
-					// We crossed a corner, need to figure out which we passed first
-					const Real 
-						fDistY = (1.0f - vWalkSlot0.y) / vInc.y,
-						fDistX = (1.0f - vWalkSlot0.x) / vInc.x;
-
-					if (fDistX < fDistY)
-					{
-						nCurrPageX += nDirX;
-						vWalkPage.x -= 1.0f;
-					}
-					else
-					{
-						nCurrPageY += nDirY;
-						vWalkPage.y -= 1.0f;
-					}
-
-				}
-				else if (vWalkPage.x >= 1.0f)
-				{
-					nCurrPageX += nDirX;
-					vWalkPage.x -= 1.0f;
-				}
-				else if (vWalkPage.y >= 1.0f)
-				{
-					nCurrPageY += nDirY;
-					vWalkPage.y -= 1.0f;
-				}
-				if (params.limit)
-				{
-					if (ray.getOrigin().distance(computeTerrainSlotPosition(nCurrPageX, nCurrPageY)) > params.limit)
-					{
-						bSearching = false;
-						break;
-					}
-				}
-				pSlot = getTerrainSlot(nCurrPageX, nCurrPageY);
+			case VonN_NORTH:	++py; break;	// Page-space has y-coordinate flipped
+			case VonN_EAST:		++px; break;
+			case VonN_SOUTH:	--py; break;	// Page-space has y-coordinate flipped
+			case VonN_WEST:		--px; break;
+			default:
+				break;
 			}
+			pSlot = getTerrainSlot(px, py);
 
-			// Check sought slot
-			// TODO: pageSceneNode != NULL is ugly, use a "isReady/isLoaded" getter checker instead
-			if (pSlot != NULL && pSlot->instance != NULL && pSlot->canRead())
-			{
-				nGapCount = 0;
-				OHT_DBGTRACE(
-					"\t[" << pSlot->x << "x" << pSlot->y << "], " <<
-					"bbox=" << pSlot->instance->getBoundingBox()
-				);
-				if (pSlot->instance->rayIntersects(result, ray, params))
-				{
-					bSearching = false;
-					break;
-				}
-				else
-				{
-					// not this one, trigger search for another slot
-					pSlot = NULL;
-				}
-			}
+			if (pSlot == NULL || pSlot == pSlot0 || pSlot->instance == NULL || !pSlot->canRead())
+				continue;
 
+			OHT_DBGTRACE(
+				"\t[" << pSlot->x << "x" << pSlot->y << "], " <<
+				"bbox=" << pSlot->instance->getBoundingBox()
+			);
+			Vector3
+				origin = i.intersection(fTolerance) - pSlot->instance->getPosition(),
+				direction = ray.getDirection();
+
+#ifdef _DEBUG
+			const Vector3
+				p = origin + pSlot->instance->getPosition(),
+				b0 = pSlot->instance->getBoundingBox().getMinimum() - options.cellScale,
+				bN = pSlot->instance->getBoundingBox().getMaximum() + options.cellScale;
+			OgreAssert(b0.x <= p.x && b0.z <= p.z && bN.x >= p.x && bN.z >= p.z, "Ray origin must be contained within the selected page");
+#endif // _DEBUG
+
+			if (pSlot->instance->rayIntersects(result, Ray(origin, direction), params, i.distance))
+				break;
+
+			pSlot0 = pSlot;
 		}
 
 		if (!result.hit)
 			OHT_DBGTRACE("No ray results");
 		else
-			OHT_DBGTRACE(
-				"RAY HIT: " << result.position << ", " <<
-				"bbox=" << pSlot->instance->getBoundingBox()
-			);
+			OHT_DBGTRACE("RAY HIT: " << result.position);
 
 		return result;		
 	}
@@ -960,7 +875,7 @@ namespace Ogre
 		transformSpace(OCS_Terrain, OCS_PagingStrategy, ptSlot);
 
 		x = static_cast< int16 > (ptSlot.x);
-		y = static_cast< int16 > (ptSlot.y);	// TODO: Umm, I thought y was supposed to be flipped?
+		y = static_cast< int16 > (ptSlot.y);
 
 #ifdef _DEBUG
 		TerrainSlot * pSlot = getTerrainSlot(x, y);

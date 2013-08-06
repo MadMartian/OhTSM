@@ -140,20 +140,19 @@ namespace Ogre
 
 		/** Performs a ray query on the specified surface in the specified channel
 		@remarks Performs a ray query on the surface represented by pShadow and stores the result in walker
+		@param limit Limit of the ray query relative to the beginning of the isosurface
 		@param channel Channel that the surface belongs to
 		@param pDataGrid The cube voxel region that occupies the space of the surface
-		@param walker The walker object that will be updated with the results of this operation
-		@param wcctr World cell coordinates relative to the voxel cube's region
 		@param ray Ray in voxel cube space relative to the voxel cube's position
 		@param pShadow The shadow object of the surface being interrogated
 		@param nLOD The LOD to test the surface, affects the size of the cells interrogated
 		@param enTouchFlags The sides of the cubical region that have adjacent stitching information
+		@returns True and the distance from the walker's ray origin that intersected if there was an intersection, false otherwise
 		*/
-		void rayQuery (
+		std::pair< bool, Real > rayQuery (
+			const Real limit,
 			const Channel::Ident channel,
 			const Voxel::CubeDataRegion * pDataGrid, 
-			RayCellWalk & walker, 
-			const WorldCellCoords & wcctr, 
 			const Ray & ray, 
 			const SharedPtr< HardwareShadow::HardwareIsoVertexShadow > & pShadow, 
 			const unsigned nLOD, 

@@ -370,7 +370,7 @@ namespace Ogre
 			return Touch3DFlags(nTransitionFlags);
 		}
 
-		void Core::rayQuery( RayCellWalk & walker, const WorldCellCoords & wcctr, const Ray & ray )
+		std::pair< bool, Real > Core::rayQuery( const Ray & ray, const Real limit )
 		{
 			oht_assert_threadmodel(ThrMdl_Main);
 			OgreAssert(surface != NULL, "Must be initialised before performing a ray query");
@@ -381,14 +381,12 @@ namespace Ogre
 			if (_bResetting)
 				generateConfiguration(nLOD, t3dFlags);
 
-			factory->base->getIsoSurfaceBuilder()
+			return factory->base->getIsoSurfaceBuilder()
 				->rayQuery(
+					limit,
 					factory->channel,
-					block, walker, wcctr, 
-					Ray(
-						ray.getOrigin() + block->getBoxSize().getMinimum() / block->getGridScale(), 
-						ray.getDirection()
-					), 
+					block,
+					ray,
 					surface->getShadow(), nLOD, t3dFlags
 				);
 		}
@@ -403,6 +401,16 @@ namespace Ogre
 		bool Core::isInitialized() const
 		{
 			return surface != NULL && _pSceneNode != NULL;
+		}
+
+		const Container * Core::neighbor( const Moore3DNeighbor enNeighbor ) const
+		{
+			return dynamic_cast< const Container * > (_vpNeighbors[enNeighbor]);
+		}
+
+		Container * Core::neighbor( const Moore3DNeighbor enNeighbor )
+		{
+			return dynamic_cast< Container * > (_vpNeighbors[enNeighbor]);
 		}
 
 		namespace Interfaces

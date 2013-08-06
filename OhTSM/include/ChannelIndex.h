@@ -242,6 +242,8 @@ namespace Ogre
 						}
 					}
 
+					_current = value_type(Ident(), NULL);
+
 					OHT_CR_END();
 				}
 

@@ -19,9 +19,9 @@ ExampleController::ExampleController(
 bool ExampleController::processUnbufferedMouseInput( const FrameEvent& evt )
 {
 	if (mMouse->getMouseState().buttonDown(OIS::MB_Left))
-		metaball(true);
+		shootMetaball(true);
 	else if (mMouse->getMouseState().buttonDown(OIS::MB_Right))
-		metaball(false);
+		shootMetaball(false);
 
 	return ExampleFrameListener::processUnbufferedMouseInput(evt);
 }
@@ -32,7 +32,12 @@ bool ExampleController::processUnbufferedKeyInput( const FrameEvent& evt )
 
 	if (mKeyboard->isKeyDown(OIS::KC_ADD) && _nTimeTracker > 0.25f)
 	{
-		metaball();
+		shootMetaball();
+		_nTimeTracker = 0.0f;
+	}
+	if (mKeyboard->isKeyDown(OIS::KC_MINUS) && _nTimeTracker > 0.25f)
+	{
+		placeMetaball();
 		_nTimeTracker = 0.0f;
 	}
 
@@ -49,7 +54,7 @@ bool ExampleController::processUnbufferedKeyInput( const FrameEvent& evt )
 	return ExampleFrameListener::processUnbufferedKeyInput(evt);
 }
 
-void ExampleController::metaball( const bool bExcavating /*= true*/ )
+void ExampleController::shootMetaball( const bool bExcavating /*= true*/ )
 {
 	// zAxis because by default the camera's direction is 
 	Ray ray(mCamera->getPosition(), mCamera->getRealDirection());
@@ -60,6 +65,10 @@ void ExampleController::metaball( const bool bExcavating /*= true*/ )
 	delete rsq;
 }
 
+void ExampleController::placeMetaball( const bool bExcavating /*= true*/ )
+{
+	_pScMgr->addMetaBall(mCamera->getPosition(), Real(250), bExcavating);
+}
 
 bool ExampleController::DiggerRSQL::queryResult( MovableObject* obj, Real distance )
 {

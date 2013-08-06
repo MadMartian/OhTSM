@@ -258,14 +258,6 @@ namespace Ogre
 			(chanopts.voxelRegionFlags & VRF_TexCoords ? IsoVertexElements::GEN_TEX_COORDS : 0);
 	}
 
-	size_t IsoSurfaceBuilder::genSurfaceFlags( const OverhangTerrainOptions::ChannelOptions & chanopts )
-	{
-		return
-			(chanopts.normals != NT_None ? IsoVertexElements::GEN_NORMALS : 0) |
-			(chanopts.voxelRegionFlags & VRF_Colours ? IsoVertexElements::GEN_VERTEX_COLOURS : 0) |
-			(chanopts.voxelRegionFlags & VRF_TexCoords ? IsoVertexElements::GEN_TEX_COORDS : 0);
-	}
-
 	WorkQueue::Response* IsoSurfaceBuilder::handleRequest( const WorkQueue::Request* req, const WorkQueue* srcQ )
 	{
 		switch (req->getType())
@@ -487,11 +479,10 @@ namespace Ogre
 		_pShadow.setNull();
 	}
 
-	void IsoSurfaceBuilder::rayQuery( 
+	std::pair< bool, Real > IsoSurfaceBuilder::rayQuery(
+		const Real limit,
 		const Channel::Ident channel,
 		const CubeDataRegion * pDataGrid, 
-		RayCellWalk & walker, 
-		const WorldCellCoords & wcctr, 
 		const Ray & ray, 
 		const SharedPtr< HardwareIsoVertexShadow > & pShadow, 
 		const unsigned nLOD, 
@@ -500,6 +491,8 @@ namespace Ogre
 	{
 		{ OGRE_LOCK_MUTEX(mMutex);
 			oht_assert_threadmodel(ThrMdl_Main);
+
+			std::pair< bool, Real > result;
 
 			HardwareIsoVertexShadow::ProducerQueueAccess queue = pShadow->requestProducerQueue(nLOD, highs);
 
@@ -511,6 +504,7 @@ namespace Ogre
 			_vCenterIVP = _pResolution->middleIsoVertexProperties;
 			_pCurrentChannelParams = & _chanparams[channel];
 
+			DiscreteRayIterator walker(ray, Real(1 << nLOD), Vector3::UNIT_SCALE * pDataGrid->getBoxSize().getMinimum() / pDataGrid->getGridScale());
 			GridCell gc(_cubemeta, nLOD);
 			TransitionCell tc(_cubemeta, nLOD, OrthoNaN);
 			typedef std::vector< OrthogonalNeighbor > NeighborVector;
@@ -519,13 +513,12 @@ namespace Ogre
 			_pMainVtxElems->clear();
 			restoreCaseCache(_pResolution);
 
-			OHTDD_Color(DebugDisplay::MC_Red);
+			OHTDD_Color(DebugDisplay::MC_Blue);
 
-			walker.lod = nLOD;
 			GridCellCoords gcc(
-				walker.cell->i + wcctr.i,
-				walker.cell->j + wcctr.j,
-				walker.cell->k + wcctr.k,
+				DimensionType(walker->i << nLOD),
+				DimensionType(walker->j << nLOD),
+				DimensionType(walker->k << nLOD),
 				nLOD
 			);
 
@@ -538,7 +531,7 @@ namespace Ogre
 			);
 			OHT_ISB_DBGTRACE("Starting IsoSurfaceBuilder rayQuery with gcc=" << gcc);
 
-			while (walker && 
+			while (walker < limit &&
 				gcc.i < _cubemeta.dimensions &&
 				gcc.j < _cubemeta.dimensions &&
 				gcc.k < _cubemeta.dimensions
@@ -548,16 +541,16 @@ namespace Ogre
 					sides = _cubemeta.getCellTouchSide(gcc),
 					stitch = Touch3DFlags(sides & highs);
 
-#if defined(_DISPDBG) && defined(_OHT_LOG_TRACE)
-				const Vector3 vgcc(gcc.i, gcc.j, gcc.k);
-				const Vector3 vWPos = walker.getPosition() + Vector3((Real)wcctr.i, (Real)wcctr.j, (Real)wcctr.k);
+#if defined(_DISPDBG) || defined(_OHT_LOG_TRACE)
+				const Vector3 vgcc = Vector3(gcc.i, gcc.j, gcc.k) + walker.offset;
+				const Vector3 vWPos = walker.intersection;
 				const AxisAlignedBox bboxCell(vgcc, vgcc + Real(1 << nLOD));
 				OHT_ISB_DBGTRACE("\t\t\t\t\tCell: [" << gcc.i << "," << gcc.j << "," << gcc.k << "], " 
 					<< AxisAlignedBox(
 						pDataGrid->getBoundingBox().getMinimum() + bboxCell.getMinimum() * pDataGrid->getGridScale(),
 						pDataGrid->getBoundingBox().getMinimum() + bboxCell.getMaximum() * pDataGrid->getGridScale()
 					)
-					<< ", WRelPos=" << walker.getPosition() << ", WPos=" << (vWPos * pDataGrid->getGridScale() + pDataGrid->getBoundingBox().getMinimum())
+					<< ", WRelPos=" << walker.intersection << ", WPos=" << (vWPos * pDataGrid->getGridScale() + pDataGrid->getBoundingBox().getMinimum())
 				);
 				OHTDD_Cube(bboxCell);
 				OHTDD_Point(vWPos);
@@ -577,7 +570,7 @@ namespace Ogre
 
 					for (NeighborVector::const_iterator i  = neighbors.begin(); i != neighbors.end(); ++i)
 					{
-						OHTDD_Translate(-pDataGrid->getBoundingBox().getSize() / (pDataGrid->getGridScale() * 2));
+						//OHTDD_Translate(-pDataGrid->getBoundingBox().getSize() / (pDataGrid->getGridScale() * 2));
 
 						tc.side = *i;
 						tc = gcc;
@@ -603,20 +596,20 @@ namespace Ogre
 
 						for (TransitionTriangleIterator j = trbuild.iterator(); j; ++j)
 						{
-							OHT_ISB_DBGTRACE(
+							OHT_DBGTRACE(
 								"\t\t\t\t\t\t\tTriangle (Transition): (" 
-								<< Vector3(_pMainVtxElems->positions[j[0]]) * pDataGrid->getGridScale() + pDataGrid->getPosition()
+								<< Vector3(_pMainVtxElems->positions[j[0]]) * pDataGrid->getGridScale() + pDataGrid->getBoundingBox().getCenter()
 								<< ',' 
-								<< Vector3(_pMainVtxElems->positions[j[1]]) * pDataGrid->getGridScale() + pDataGrid->getPosition()
+								<< Vector3(_pMainVtxElems->positions[j[1]]) * pDataGrid->getGridScale() + pDataGrid->getBoundingBox().getCenter()
 								<< ',' 
-								<< Vector3(_pMainVtxElems->positions[j[2]]) * pDataGrid->getGridScale() + pDataGrid->getPosition()
+								<< Vector3(_pMainVtxElems->positions[j[2]]) * pDataGrid->getGridScale() + pDataGrid->getBoundingBox().getCenter()
 								<< ')'
 							);
 
-							if (!j.collapsed() && rayCollidesTriangle(&walker->second, ray, j[0], j[1], j[2]))
+							if (!j.collapsed() && rayCollidesTriangle(&result.second, ray, j[0], j[1], j[2]))
 							{
-								walker->first = true;
-								return;
+								result.first = true;
+								return result;
 							}
 						}
 					}
@@ -624,7 +617,7 @@ namespace Ogre
 
 				gc = gcc;
 
-				OHTDD_Translate(-pDataGrid->getBoundingBox().getSize() / (pDataGrid->getGridScale() * 2));
+				//OHTDD_Translate(-pDataGrid->getBoundingBox().getSize() / (pDataGrid->getGridScale() * 2));
 
 				NonTrivialRegularCase rgcase;
 				rgcase.cell = gc.index();
@@ -642,33 +635,34 @@ namespace Ogre
 				rgbuild << rgcase;
 				for (RegularTriangleIterator j = rgbuild.iterator(); j; ++j)
 				{
-					OHT_ISB_DBGTRACE(
+					OHT_DBGTRACE(
 						"\t\t\t\t\t\t\tTriangle (Regular): (" 
-						<< Vector3(_pMainVtxElems->positions[j[0]]) * pDataGrid->getGridScale() + pDataGrid->getPosition()
+						<< Vector3(_pMainVtxElems->positions[j[0]]) * pDataGrid->getGridScale() + pDataGrid->getBoundingBox().getCenter()
 						<< ',' 
-						<< Vector3(_pMainVtxElems->positions[j[1]]) * pDataGrid->getGridScale() + pDataGrid->getPosition()
+						<< Vector3(_pMainVtxElems->positions[j[1]]) * pDataGrid->getGridScale() + pDataGrid->getBoundingBox().getCenter()
 						<< ',' 
-						<< Vector3(_pMainVtxElems->positions[j[2]]) * pDataGrid->getGridScale() + pDataGrid->getPosition()
+						<< Vector3(_pMainVtxElems->positions[j[2]]) * pDataGrid->getGridScale() + pDataGrid->getBoundingBox().getCenter()
 						<< ')'
 					);
 
-					if (!j.collapsed() && rayCollidesTriangle(&walker->second, ray, j[0], j[1], j[2]))
+					if (!j.collapsed() && rayCollidesTriangle(&result.second, ray, j[0], j[1], j[2]))
 					{
-						walker->first = true;
-						return;
+						result.first = true;
+						return result;
 					}
 				}
 
 				++walker;
-				gcc.i = walker.cell->i + wcctr.i;
-				gcc.j = walker.cell->j + wcctr.j;
-				gcc.k = walker.cell->k + wcctr.k;
+				gcc.i = DimensionType(walker->i << nLOD);
+				gcc.j = DimensionType(walker->j << nLOD);
+				gcc.k = DimensionType(walker->k << nLOD);
 
 				neighbors.clear();
 			}
-		}
 
-		walker->first = false;
+			result.first = false;
+			return result;
+		}
 	}
 
 #ifdef _DEBUG
@@ -1330,7 +1324,7 @@ namespace Ogre
 		*pDist = oq.length();
 
 #if defined(_OHT_LOG_TRACE) && defined(_DISPDBG)
-		OHT_ISB_DBGTRACE("\t\t\t\t\t\t\t\t\tQ=" << OHTDD_Reverse(q) << ", (s,t) = (" << s << ',' << t << ')' << ", distance=" << *pDist);
+		OHT_DBGTRACE("\t\t\t\t\t\t\t\t\tQ=" << OHTDD_Reverse(q) << ", (s,t) = (" << s << ',' << t << ')' << ", distance=" << *pDist);
 #endif // _DEBUG
 
 		OHTDD_Color(DebugDisplay::MC_Blue);

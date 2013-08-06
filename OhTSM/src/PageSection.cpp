@@ -127,7 +127,7 @@ namespace Ogre
 			jend = i->end();
 			for (j = i->begin(); j != jend; ++j)
 			{
-				(*j)->unlinkeHeightMap(_pMetaHeightmap);
+				(*j)->unlinkHeightMap();
 				OGRE_DELETE *j;
 				*j = NULL;
 			}
@@ -178,7 +178,7 @@ namespace Ogre
 
 		for (Terrain2D::iterator j = _vTiles.begin(); j != _vTiles.end(); ++j)
 			for (TerrainRow::iterator i = j->begin(); i != j->end(); ++i)
-				(*i)->voxeliseTerrain(_pMetaHeightmap);
+				(*i)->voxeliseTerrain();
 
 		for (Terrain2D::iterator j = _vTiles.begin(); j != _vTiles.end(); ++j)
 			for (TerrainRow::iterator i = j->begin(); i != j->end(); ++i)
@@ -431,139 +431,31 @@ namespace Ogre
 		}
 	}
 
-	bool PageSection::rayIntersects( OverhangTerrainManager::RayResult & result, const Ray& ray, const OverhangTerrainManager::RayQueryParams & params ) const
+	bool PageSection::rayIntersects( OverhangTerrainManager::RayResult & result, const Ray& rayPageLocalWorldSpace, const OverhangTerrainManager::RayQueryParams & params, const Real distance ) const
 	{
-		oht_assert_threadmodel(ThrMdl_Main);
-		const Real nHPWsz = manager->options.getPageWorldSize() / 2;
-		const Ray rayLocal (
-			manager->toSpace(OCS_World, OCS_Terrain, ray.getOrigin() - getPosition()),	// TODO: Verify position
-			manager->toSpace(OCS_World, OCS_Terrain, ray.getDirection())
-		);
-		Vector3 pHit;
-		const Vector3 & vecRayLocalOrigin = rayLocal.getOrigin();
-
 		OHT_DBGTRACE("\t\tPage BBox test=" << getBoundingBox());
 
-		// Don't bother testing ray intersections with page boundaries if the ray origin is inside this page, let's just start processing at the tile at the ray origin
-		if (
-			vecRayLocalOrigin.x >= -nHPWsz && vecRayLocalOrigin.x <= +nHPWsz &&
-			vecRayLocalOrigin.y >= -nHPWsz && vecRayLocalOrigin.y <= +nHPWsz
-		)	
+		oht_assert_threadmodel(ThrMdl_Main);
+
+		const TerrainTile * pTile;
 		{
-			OHT_DBGTRACE("\t\t\tCONTAINED");
-			pHit = rayLocal.getOrigin();
+			Vector3 origin = rayPageLocalWorldSpace.getOrigin();
+			origin.makeFloor(getBoundingBox().getHalfSize() - manager->options.cellScale);
+			origin.makeCeil(-getBoundingBox().getHalfSize() + manager->options.cellScale);
+			pTile = getTerrainTile(origin);
 		}
-		else
-		{
-			const Vector3 
-				dir = rayLocal.getDirection();
-			Vector3
-				pHitX = Vector3::NEGATIVE_UNIT_X - nHPWsz, 
-				pHitY = Vector3::NEGATIVE_UNIT_Y - nHPWsz;
-
-			Real 
-				nDistX = std::numeric_limits< Real >::max(),
-				nDistY = nDistX;
-
-			std::pair< bool, Real > 
-				interX, interY;
-
-			const Vector3 plnEdges_D[] = {
-				Vector3(-nHPWsz + 1.0f,			0.0f,					0.0f),
-				Vector3(0.0f,					-nHPWsz + 1.0f,			0.0f),
-				Vector3(+nHPWsz - 1.0f,			0.0f,					0.0f),
-				Vector3(0.0f,					+nHPWsz - 1.0f,			0.0f)
-			};
-			enum PlaneEdge
-			{
-				PLN_LEFT = 0,
-				PLN_TOP = 1,
-				PLN_RIGHT = 2,
-				PLN_BOTTOM = 3
-			};
-
-			OHT_DBGTRACE("\t\tHit Planes:\n" 
-				<< "\t\t\t" << plnEdges_D[0]
-				<< "\t\t\t" << plnEdges_D[1]
-				<< "\t\t\t" << plnEdges_D[2]
-				<< "\t\t\t" << plnEdges_D[3]
-			);
-
-			if (dir.x > 0)
-			{
-				interX = rayLocal.intersects(Plane(Vector3::NEGATIVE_UNIT_X, plnEdges_D[PLN_LEFT]));
-				if (interX.first && interX.second < nDistX)
-				{
-					nDistX = interX.second;
-					OHT_DBGTRACE("\t\tIntersection LEFT=" << nDistX);
-				}
-			} else
-			if (dir.x < 0)
-			{
-				interX = rayLocal.intersects(Plane(Vector3::UNIT_X, plnEdges_D[PLN_RIGHT]));
-				if (interX.first && interX.second < nDistX)
-				{
-					nDistX = interX.second;
-					OHT_DBGTRACE("\t\tIntersection RIGHT=" << nDistX);
-				}
-			}
-
-			if (dir.y > 0)
-			{
-				interY = rayLocal.intersects(Plane(Vector3::NEGATIVE_UNIT_Y, plnEdges_D[PLN_TOP]));
-				if (interY.first && interY.second < nDistY)
-				{
-					nDistY = interY.second;
-					OHT_DBGTRACE("\t\tIntersection TOP=" << nDistY);
-				}
-			} else
-			if (dir.y < 0)
-			{
-				interY = rayLocal.intersects(Plane(Vector3::UNIT_Y, plnEdges_D[PLN_BOTTOM]));
-				if (interY.first && interY.second < nDistY)
-				{
-					nDistY = interY.second;
-					OHT_DBGTRACE("\t\tIntersection BOTTOM=" << nDistY);
-				}
-			}
-
-			if (nDistX < params.limit || !params.limit)
-			{
-				pHitX = rayLocal.getPoint(nDistX);
-				OHT_DBGTRACE("\t\tHit X-wise=" << (manager->toSpace(OCS_Terrain, OCS_World, pHitX) + getPosition()));
-			}
-			if (nDistY < params.limit || !params.limit)
-			{
-				pHitY = rayLocal.getPoint(nDistY);
-				OHT_DBGTRACE("\t\tHit Y-wise=" << (manager->toSpace(OCS_Terrain, OCS_World, pHitY) + getPosition()));
-			}
-
-			if (pHitX.x >= -nHPWsz && pHitX.x <= +nHPWsz && pHitX.y >= -nHPWsz && pHitX.y <= +nHPWsz)
-				pHit = pHitX;
-			else
-			if (pHitY.x >= -nHPWsz && pHitY.x <= +nHPWsz && pHitY.y >= -nHPWsz && pHitY.y <= +nHPWsz)
-				pHit = pHitY;
-			else
-				return false;
-		}
-
-		const TerrainTile * pTile = getTerrainTile(pHit, OCS_Terrain);
-
-		// Outstanding bug tracker (<ray origin> : <ray direction>):
-		// - {x=-2450.0525 y=255.06381 z=5713.2734 } : {x=0.79931283 y=-0.16910532 z=-0.57679886 }
-
 		OgreAssert(pTile != NULL, "Something's wrong, should always get a tile here but got NULL instead");
 
-		OHT_DBGTRACE("\t\tTile bbox intersection=" << (manager->toSpace(OCS_Terrain, OCS_World, pHit) + getPosition()));
+		OHT_DBGTRACE("\t\tTile bbox intersection=" << (rayPageLocalWorldSpace.getOrigin() + getPosition()));
 
 		OHTDD_Translate(-getPosition());
 
-		if (pTile->rayIntersects(result, rayLocal, params, true))
-		{
-			OverhangTerrainManager::transformSpace(OCS_Terrain, manager->options.alignment, OCS_World, result.position, manager->options.cellScale);
+		DiscreteRayIterator i = DiscreteRayIterator(rayPageLocalWorldSpace, manager->options.getTileWorldSize());
 
+		if (pTile->rayIntersects(result, params, distance, i))
+		{
 			OHTDD_Color(DebugDisplay::MC_Turquoise);
-			OHTDD_Line(ray.getOrigin() - getPosition(), result.position);
+			OHTDD_Line(rayPageLocalWorldSpace.getOrigin(), result.position);
 
 			result.position += getPosition();	// TODO: Verify position
 				
@@ -571,7 +463,7 @@ namespace Ogre
 		} else
 		{
 			OHTDD_Color(DebugDisplay::MC_Yellow);
-			OHTDD_Line(ray.getOrigin() - getPosition(), ray.getPoint(params.limit) - getPosition());
+			OHTDD_Line(rayPageLocalWorldSpace.getOrigin(), rayPageLocalWorldSpace.getPoint(params.limit));
 
 			return false;
 		}

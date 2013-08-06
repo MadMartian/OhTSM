@@ -263,6 +263,9 @@ namespace Ogre
 		NumOCS = 5
 	};
 
+	/// Clamps the direction component of the specified ray by the specified tolerance amount
+	Ray & clamp(Ray & ray, const float fTolerance);
+
 	/// Coordinate type used to represent discrete coordinates such as in a 3D voxel grid or to represent meta-regions in terrain tiles or page sections
 	template< typename T, typename Subclass >
 	class CellCoords
@@ -307,12 +310,120 @@ namespace Ogre
 			k += vc.k;
 			return *static_cast< Subclass * > (this);
 		}
+
+		template< typename J >
+		inline Subclass operator - (const J value) const
+		{
+			return Subclass(
+				i - value,
+				j - value,
+				k - value
+			);
+		}
+
+		template< typename J >
+		inline Subclass operator + (const J value) const
+		{
+			return Subclass(
+				i + value,
+				j + value,
+				k + value
+			);
+		}
+
+		template< typename J >
+		inline Subclass & operator -= (const J value)
+		{
+			i -= value;
+			j -= value;
+			k -= value;
+			return *static_cast< Subclass * > (this);
+		}
+
+		template< typename J >
+		inline Subclass & operator += (const J value)
+		{
+			i += value;
+			j += value;
+			k += value;
+			return *static_cast< Subclass * > (this);
+		}
+
+		template< typename J >
+		inline Subclass operator / (const J value) const
+		{
+			return Subclass
+				(
+					i / value,
+					j / value,
+					k / value
+				);
+		}
+
+		template< typename J >
+		inline Subclass operator * (const J value) const
+		{
+			return Subclass
+				(
+					i * value,
+					j * value,
+					k * value
+				);
+		}
+
+		template< typename J >
+		inline Subclass & operator /= (const J value)
+		{
+			i /= value;
+			j /= value;
+			k /= value;
+			return *static_cast< Subclass * > (this);
+		}
+
+		template< typename J >
+		inline Subclass & operator *= (const J value)
+		{
+			i *= value;
+			j *= value;
+			k *= value;
+			return *static_cast< Subclass * > (this);
+		}
+
+		template< typename J >
+		inline Subclass operator % (const J value) const
+		{
+			return Subclass
+				(
+					i % value,
+					j % value,
+					k % value
+				);
+		}
+
+		template< typename J >
+		inline Subclass & operator %= (const J value)
+		{
+			i %= value;
+			j %= value;
+			k %= value;
+			return *static_cast< Subclass * > (this);
+		}
+
 		inline Subclass & operator >>= (const unsigned s)
 		{
 			i >>= s;
 			j >>= s;
 			k >>= s;
 			return *static_cast< Subclass * > (this);
+		}
+
+		inline Subclass operator - () const
+		{
+			return Subclass (
+				-i,
+				-j,
+				-k
+			);
 		}
 
 		inline Subclass operator & (const T mask) const
@@ -391,16 +502,16 @@ namespace Ogre
 		{ return dc.write(outs); }
 
 	/// Iterator pattern for walking through a discrete 3D-grid of arbitrary size
-	class DiscreteRayIterator : public std::iterator <std::input_iterator_tag, std::pair< bool, Real > >
+	class DiscreteRayIterator : public std::iterator <std::input_iterator_tag, DiscreteCoords >
 	{
 	private:
 		/// Runs a single iteration
 		void iterate();
 
-	protected:
-		/// Ray origin
-		const Vector3 _origin;
+		/// Perform dependency-injection on nested class objects
+		void DI();
 
+	protected:
 		/// Incremented gradually until one of its components crosses 1.0, always positive
 		Vector3 _walker;
 
@@ -408,25 +519,25 @@ namespace Ogre
 		Vector3 _incrementor;
 
 		/// Used to update the cell coordinates, accounts for negative directions unlike the incrementor, mask flags indicating negativity of the corresponding deltas
-		struct {
+		struct Delta {
 			signed short x, y, z;
 			size_t mx, my, mz;
 		} _delta;
 
+		/// Linear offset from intersected cell boundary from previous step to the current position
+		Real _off;
+
 		/// Used to determine which component of the walker crossed 1.0 first
 		Vector3 _dist;
 
-		/// Used to track the limit
-		Real _limit_sq;
-
-		/// Used to indicate the span of a single cell based on current LOD (float version)
+		/// Used to indicate the span of a single cell (float version)
 		Real _fspan;
 
-		/// Used to indicate the span of a single cell based on current LOD (integral version)
-		signed short _ispan;
+		/// Total linear distance traversed thus far
+		Real _ldist;
 
-		/// Stores the current intersection state, the second member is the distance from the ray origin to the intersection point (if valid), and the first member indicates if the second member is valid
-		std::pair< bool, Real > _intersection;
+		/// Used to indicate the span of a single cell (integral version)
+		signed long _ispan;
 
 		/// Which cell in discrete space are we currently in?
 		DiscreteCoords _cell;
@@ -435,22 +546,81 @@ namespace Ogre
 		Touch3DSide _t3ds;
 
 	public:
-		/// Property accessor for the discrete cell coordinates
-		class CellPropertyAccessor
+		/// Positional offset of discrete cells
+		const Vector3 offset;
+		/// Ray origin and direction
+		const Ray ray;
+
+		/// Property accessor for the current cell position coordinates
+		class PositionPropertyAccessor
 		{
 		public:
-			inline DiscreteCoords * operator -> () { return _pCell; }
-			inline operator const DiscreteCoords & () const { return *_pCell; }
+			inline const Vector3 * operator -> () const
+			{
+				updatePosition();
+				return &_vector;
+			}
+			inline operator const Vector3 & () const
+			{
+				updatePosition();
+				return _vector;
+			}
+			inline const Vector3 & operator () (const Real offset) const
+			{
+				updatePosition(offset);
+				return _vector;
+			}
+
+		protected:
+			/// Cache variable for the updated position
+			mutable Vector3 _vector;
+
+			/// Dependency injection of the root property
+			void DI (const Ray & ray, const Real & fLDist, const Real & fspan);
+
+			/// Computes the position offset by the specified real amount
+			virtual void updatePosition(const Real offset = 0.0f) const;
+
+		private:
+			const Ray * _pRay;
+			const Real * _pLDist;
+			const Real * _pfSpan;
+
+			friend class DiscreteRayIterator;
+			friend Ogre::Log::Stream & operator << (Ogre::Log::Stream &, const PositionPropertyAccessor &);
+		} position;
+
+		class IntersectionPropertyAccessor : public PositionPropertyAccessor
+		{
+		protected:
+			virtual void updatePosition(const Real offset = 0.0f) const;
+
+			void DI (const Ray & ray, const Real & fLDist, const Real & off, const Real & fspan);
+
+		private:
+			const Real * _pOff;
+			const Real * _pfSpan;
+
+			friend class DiscreteRayIterator;
+			friend Ogre::Log::Stream & operator << (Ogre::Log::Stream &, const IntersectionPropertyAccessor &);
+		} intersection;
+
+		class LinearDistancePropertyAccessor
+		{
+		public:
+			inline operator const Real () const { return *_pLDist * *_pfSpan; }
 
 		protected:
 			/// Dependency injection of the root property
-			inline void operator &= (DiscreteCoords & cell) { _pCell = &cell; }
+			void DI (const Real & fLDist, const Real & fSpan);
 
 		private:
-			DiscreteCoords * _pCell;
+			const Real * _pLDist;
+			const Real * _pfSpan;
 
+			friend Ogre::Log::Stream & operator << (Ogre::Log::Stream &, const LinearDistancePropertyAccessor &);
 			friend class DiscreteRayIterator;
-		} cell;
+		} distance;
 
 		/// Property accessor for the neighbor of previous cell that was crossed-over into the current cell
 		class NeighborPropertyAccessor
@@ -469,24 +639,46 @@ namespace Ogre
 		} neighbor;
 
 		/** 
-		@param ptOrigin Origin of the ray
-		@param direction Direction of the ray
+		@param Ray ray
 		@param limit Optional search limit length of the ray or zero to specify no limit
+		@param offset Positional offset of discrete cells
 		*/
-		DiscreteRayIterator(const Vector3 & ptOrigin, const Vector3 & direction, const Real limit = 0);
+		DiscreteRayIterator(const Ray & ray, const Real fCellSize, const Vector3 & offset = Vector3::ZERO);
+		DiscreteRayIterator(const DiscreteRayIterator & copy);
+		DiscreteRayIterator(DiscreteRayIterator && move);
 
-		/// Gets the current real-approximate position
-		virtual Vector3 getPosition() const;
+		static inline DiscreteRayIterator from (const Ray & ray, const Real fCellSize, const Vector3 & offset = Vector3::ZERO) { return DiscreteRayIterator (ray, fCellSize, offset); }
 
 		bool operator == (const DiscreteRayIterator & other) const;
 		bool operator != (const DiscreteRayIterator & other) const;
 
-		std::pair< bool, Real > & operator * () { return _intersection; }
-		std::pair< bool, Real > * operator -> () { return &_intersection; }
+		inline
+		bool operator < (const Real fDist) const { return _ldist < fDist; }
+
+		DiscreteCoords & operator * () { return _cell; }
+		DiscreteCoords * operator -> () { return &_cell; }
 
 		DiscreteRayIterator & operator ++ ();
 		DiscreteRayIterator operator ++ (int);
 	};
+
+	inline
+	Ogre::Log::Stream & operator << (Ogre::Log::Stream & stream, const DiscreteRayIterator::PositionPropertyAccessor & position)
+	{
+		return stream << static_cast< const Vector3 & > (position);
+	}
+
+	inline
+	Ogre::Log::Stream & operator << (Ogre::Log::Stream & stream, const DiscreteRayIterator::IntersectionPropertyAccessor & intersection)
+	{
+		return stream << static_cast< const Vector3 & > (intersection);
+	}
+
+	inline
+	Ogre::Log::Stream & operator << (Ogre::Log::Stream & stream, const DiscreteRayIterator::LinearDistancePropertyAccessor & distance)
+	{
+		return stream << static_cast< const Real & > (distance);
+	}
 
 	/** Type to represent a fixed-precision rational value 
 	@remarks "B" is the number of bits to occupy for the fractional part, "T" is the integral type to represent the entire number in memory

@@ -131,10 +131,10 @@ namespace Ogre
 		void initialise(SceneNode * pParentSceneNode);
 
 		/// Builds meta-fragments for the space covered by the portion of the heightmap enclosed by this terrain-tile, binds the heightmap to all meta-fragments
-		void voxeliseTerrain(MetaHeightMap * const pMetaHeightMap);
+		void voxeliseTerrain();
 
 		/// Unlinks the heightmap from all meta-fragments in the terrain channel
-		void unlinkeHeightMap(const MetaHeightMap * const pMetaHeightMap);
+		void unlinkHeightMap();
 
 		// Walks all child renderables detaching them from the scene node, then destroys its scene node
 		void detachFromScene();
@@ -191,19 +191,18 @@ namespace Ogre
 			The search would complete if either the ray hit something or the distance limit of the parameters object was reached or the page
 			boundaries were reached.  The query is limited to the channels specified in the parameters object.  Must be called from the main thread.
 		@param result The result of the ray query is stored here
-		@param rayPageRelTerrainSpace The ray in terrain-space (i.e. OverhangCoordinateSpace::OCS_Terrain) relative to the page center
 		@param params Parameters influencing the ray query including the set of channels to restrict the query to and the maximum length of
 			the ray to search treating the ray as a line segment to eliminate the inevitable infinite search for true orthodox rays or
 			specify zero for no limit
-		@param cascadeToNeighbours Whether or not to recursively cascade the search operation to neighboring terrain-tiles in the same page 
-			or to terminate after the terrain-tile borders have been reached
+		@param distance The distance traversed so far in this query since the first terrain-tile in the parent page was queried
+		@param i The ray iterator for traversing terrain tiles and metafragments within this page initialized with the page-local world-space ray
 		@returns True if the intersection passed and a triangle in a surface was intersected by the ray, false if nothing was hit
 		*/
 		bool rayIntersects(
 			OverhangTerrainManager::RayResult & result, 
-			const Ray& rayPageRelTerrainSpace, 
 			const OverhangTerrainManager::RayQueryParams & params,
-			bool cascadeToNeighbours = false
+			const Real distance,
+			DiscreteRayIterator & i
 		) const;
 
 		/// Persists this terrain-tile and its meta-fragments to the stream, can be background
@@ -316,43 +315,6 @@ namespace Ogre
 
 		/// 2D index for this terrain-tile in its page
 		unsigned _x0, _y0;
-
-		/** Returns the terrain-tile adjacent to this one in the direction consistent with the specified ray
-		@param rayPageRelTerrainSpace The ray relative to the page center in terrain-space (OverhangCoordinateSpace::OCS_Terrain)
-		@param distanceLimit The maximum length of the ray to search treating the ray as a line segment to eliminate the inevitable infinite
-			search for true orthodox rays or specify zero for no limit
-		@returns The terrain-tile adjacent to this terrain-tile in the direction that the ray is aiming at or NULL if the page boundaries have been reached */
-		const TerrainTile* raySelectNeighbour(const Ray& rayPageRelTerrainSpace, Real distanceLimit = 0) const;
-
-		/** Tests whether the ray intersects a triangle in one of this terrain-tile's meta-fragment's isosurfaces
-		@remarks The search starts from a specific meta-fragment of this terrain-tile found by a previous call to rayIntersects.  The search continues until
-			either the terrain-tile boundary has been reached or the distance limit has been reached.
-		@param result This will be populated with the results of the query
-		@param rayPageRelTerrainSpace The ray we're searching with in terrain-space (OverhangCoordinateSpace::OCS_Terrain) relative to the page center
-		@param tile Ray offset where the ray touches the first meta-fragment in this terrain-tile
-		@param params Parameters influencing the ray query including the set of channels to restrict the query to and the maximum length of
-			the ray to search treating the ray as a line segment to eliminate the inevitable infinite search for true orthodox rays or
-			specify zero for no limit
-		@returns A pair of values, the first being a boolean indicating whether the ray intersected a triangle or not, and the second being the distance 
-			in world-space from the point where the ray crossed this terrain-tile's border to the point of triangle intersection.
-		*/
-		std::pair< bool, Real > rayIntersectsMetaWorld(
-			OverhangTerrainManager::RayResult & result, 
-			const Ray & rayPageRelTerrainSpace, 
-			const Real tile, 
-			const OverhangTerrainManager::RayQueryParams & params
-		) const;
-
-		void rayQueryWalkCell(
-			OverhangTerrainManager::RayResult &result,
-			RayCellWalk &walker,
-			const MetaFragMap & mapMF,
-			const YLevel yl,
-			const YLevel yl0,
-			const AxisAlignedBox & bboxOrigin,
-			const Ray &rayTileCubeIntersectRelDataGridSpace,
-			const int nCellsPerCube
-		) const;
 
 	protected:
 

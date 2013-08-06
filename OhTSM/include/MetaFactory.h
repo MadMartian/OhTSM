@@ -84,6 +84,9 @@ namespace Ogre
 		/// Retrieves a voxel factory for the specified channel
 		Voxel::MetaVoxelFactory * getVoxelFactory(const Channel::Ident channel);
 
+		/// Retrieves the data region descriptor singleton
+		const Voxel::CubeDataRegionDescriptor * getCubeDataRegionDescriptor() const { return _pCubeMeta; }
+
 	private:
 		boost::mutex _mutex;
 

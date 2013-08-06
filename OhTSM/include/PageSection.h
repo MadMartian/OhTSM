@@ -174,22 +174,22 @@ namespace Ogre {
 		}
 	};
 
-    /** Groups a number of TerrainTiles into a page, which is the unit of loading / unloading. 
+	/** Groups a number of TerrainTiles into a page, which is the unit of loading / unloading.
 	@remarks This class used to be designed to prevent single-hit page loads
 	*/
-    class PageSection : public GeneralAllocatedObject, public IOverhangTerrainPage
-    {
+	class PageSection : public GeneralAllocatedObject, public IOverhangTerrainPage
+	{
 	public:
 		/// The overhang-terrain manager singleton
 		const OverhangTerrainManager * const manager;
 
 		/**
-        @param mgr The overhang-terrain manager singleton
+		@param mgr The overhang-terrain manager singleton
 		@param pMetaFactory The object factory singleton
 		@param descchann The channel descriptor
 		*/
 		PageSection(const OverhangTerrainManager * mgr, MetaBaseFactory * const pMetaFactory, const Channel::Descriptor & descchann);
-        virtual ~PageSection();
+		virtual ~PageSection();
 
 		/// Initializes all terrain tiles with the specified initialization parameters
 		virtual void operator << (const PageInitParams & params);
@@ -236,7 +236,7 @@ namespace Ogre {
 		/** Add a new metaball to the page 
 		@see addMetaBall
 		*/
-        void addMetaBall(const Vector3 & position, Real radius, bool excavating = true);
+		void addMetaBall(const Vector3 & position, Real radius, bool excavating = true);
 
 		/** Sets the render queue group for the specified channel within which the tiles should be rendered. */
 		void setRenderQueue(const Channel::Ident channel, uint8 qid);
@@ -254,8 +254,19 @@ namespace Ogre {
 		// Walks through all child renderables and detaches them from the scene then destroys scene nodes.
 		void detachFromScene();
 
-		/// Computes a ray intersection (restricted to main thread)
-		bool rayIntersects(OverhangTerrainManager::RayResult & result, const Ray& ray, const OverhangTerrainManager::RayQueryParams & params) const;
+		/** Queries the page's isosurfaces for intersection with the specified ray
+		@remarks This method is restricted to the main thread
+		@param result Receives the isosurface triangle intersection result
+		@param rayPageLocalWorldSpace Ray in world-space coordinates relative to this page's position
+		@param params Query parameters relevant to the current query
+		@param distance The current distance traversed so far in the current query (used to compare with the maximum limit in the params parameter)
+		@returns True when an intersection with an isosurface and triangle was found somewhere within this page */
+		bool rayIntersects(
+			OverhangTerrainManager::RayResult & result,
+			const Ray& rayPageLocalWorldSpace,
+			const OverhangTerrainManager::RayQueryParams & params,
+			const Real distance
+		) const;
 
 		/// Retrieves an iterator for all meta-fragments in the specified channel of this page
 		MetaFragmentIterator iterateMetaFrags (const Channel::Ident channel);

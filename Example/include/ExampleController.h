@@ -29,7 +29,8 @@ private:
 	Real _nTimeTracker;
 	OverhangTerrainSceneManager * _pScMgr;
 
-	void metaball(const bool bExcavating = true);
+	void shootMetaball(const bool bExcavating = true);
+	void placeMetaball(const bool bExcavating = true);
 
 	class DiggerRSQL : public RaySceneQueryListener
 	{

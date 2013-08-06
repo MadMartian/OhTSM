@@ -62,8 +62,9 @@ int WINAPI WinMain ( HINSTANCE hInst, HINSTANCE, LPSTR szCmdLine, int)
 		Camera * pCam = pScMgr->createCamera("Photographer");
 		pCam->setNearClipDistance(0.1f);
 		pCam->setFarClipDistance(7000);
-		pCam->setPosition(1, 500, 1);
-		pCam->lookAt(Vector3::ZERO);
+		pCam->setPosition(Vector3(-2725.24f, 277.747f, 2748.56f));
+		pCam->setDirection(Vector3(0.998938f, 0.0495558f, 0.00161433f));
+
 		Viewport * vp = pRendWindow->addViewport(pCam);
 		pCam->setAspectRatio(Real(vp->getActualWidth()) / Real(vp->getActualHeight()));
 
