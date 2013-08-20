@@ -751,6 +751,9 @@ namespace Ogre
 		/// The LOD of the data represented in here
 		size_t _nLOD;
 
+		/// Whether the hardware state must be reset before applying new vertices
+		bool _bResetHWBuffers;
+
 		/// Reference-counted shared pointer to the data grid associated with this isosurface.
 		const Voxel::CubeDataRegionDescriptor & _cubemeta;
 		/// A 3D-LUT for the regular cases

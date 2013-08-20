@@ -33,6 +33,8 @@ http://www.gnu.org/copyleft/lesser.txt.
 #include "OgreHardwareBufferManager.h"
 #include "DebugTools.h"
 
+#define DYNAMIC_RENDERABLE_SHADOW_BUFFERED false
+
 namespace Ogre
 {
 	DynamicRenderable::DynamicRenderable(
@@ -56,8 +58,7 @@ namespace Ogre
 		_renderOp.operationType = enRenderOpType;
 		_renderOp.useIndexes = bIndices;
 		_renderOp.vertexData = OGRE_NEW VertexData(pVtxDecl, _pVtxBB);
-		if (_renderOp.useIndexes)
-			_renderOp.indexData = &_indexHWData;
+		_renderOp.indexData = &_indexHWData;
 	}
 
 	DynamicRenderable::~DynamicRenderable()
@@ -134,6 +135,7 @@ namespace Ogre
 	{
 		oht_assert_threadmodel(ThrMdl_Single);
 		op = _renderOp;
+		OHT_DBGTRACE("Build RenderOp for " << this);
 	}
 
 	void /*SimpleRenderable::*/ DynamicRenderable::setRenderOperation( const RenderOperation& rend )
@@ -222,6 +224,15 @@ namespace Ogre
 		_data.indexCount = copy._data.indexCount;
 	}
 
+	DynamicRenderable::MeshData::Index & DynamicRenderable::MeshData::Index::operator = ( const Index & copy )
+	{
+		_data.indexBuffer = copy._data.indexBuffer;
+		_data.indexCount = copy._data.indexCount;
+		_data.indexStart = copy._data.indexStart;
+		_capacity = copy._capacity;
+		return *this;
+	}
+
 	bool DynamicRenderable::MeshData::Index::prepare( const size_t nIndexCount )
 	{
 		bool bPrepareResult = true;
@@ -238,7 +249,8 @@ namespace Ogre
 				HardwareBufferManager::getSingleton().createIndexBuffer(
 					HardwareIndexBuffer::IT_16BIT,
 					_capacity,
-					HardwareBuffer::HBU_DYNAMIC_WRITE_ONLY
+					HardwareBuffer::HBU_DYNAMIC_WRITE_ONLY,
+					DYNAMIC_RENDERABLE_SHADOW_BUFFERED
 				);
 
 			bPrepareResult = false;
@@ -263,8 +275,20 @@ namespace Ogre
 	DynamicRenderable::MeshData::VertexData::VertexData(VertexDeclaration * pVtxDecl) 
 		: _capacity(0), _count(0), _elemsize(pVtxDecl->getVertexSize(0)) {}
 
+	DynamicRenderable::MeshData::VertexData::VertexData( const VertexData & copy )
+		: _buffer(copy._buffer), _capacity(copy._capacity), _count(copy._count), _elemsize(copy._elemsize) {}
+
 	DynamicRenderable::MeshData::VertexData::VertexData( VertexData && move )
 		: _buffer(move._buffer), _capacity(move._capacity), _count(move._count), _elemsize(move._elemsize) {}
+
+	DynamicRenderable::MeshData::VertexData & DynamicRenderable::MeshData::VertexData::operator = ( const VertexData & copy )
+	{
+		_buffer = copy._buffer;
+		_capacity = copy._capacity;
+		_count = copy._count;
+		_elemsize = copy._elemsize;
+		return *this;
+	}
 
 	DynamicRenderable::MeshData::VertexData::~VertexData() {}
 
@@ -284,7 +308,8 @@ namespace Ogre
 				HardwareBufferManager::getSingleton().createVertexBuffer(
 					_elemsize,
 					_capacity,
-					HardwareBuffer::HBU_DYNAMIC_WRITE_ONLY
+					HardwareBuffer::HBU_DYNAMIC_WRITE_ONLY,
+					DYNAMIC_RENDERABLE_SHADOW_BUFFERED
 				);
 
 			bResized = true;

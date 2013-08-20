@@ -85,6 +85,7 @@ int WINAPI WinMain ( HINSTANCE hInst, HINSTANCE, LPSTR szCmdLine, int)
 		options.channels[TERRAIN_ENTITY_CHANNEL].material = pMat;
 		options.channels[TERRAIN_ENTITY_CHANNEL].maxGeoMipMapLevel = 6;
 		options.channels[TERRAIN_ENTITY_CHANNEL].maxPixelError = 10;
+		options.channels[TERRAIN_ENTITY_CHANNEL].qid = RENDER_QUEUE_1;
 
 		pScMgr->setOptions(options);
 

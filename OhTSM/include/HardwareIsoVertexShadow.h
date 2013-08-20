@@ -164,6 +164,8 @@ namespace Ogre
 			/// The LOD and meta data for the rendered surface
 			LOD * const resolution;
 
+			/// Whether to reset / clear the hardware GPU state first before applying the vertices and indices
+			bool resetting;
 			/// Vertex elements to be flushed to the appropriate hardware vertex buffer
 			VertexElementList vertexQueue;
 			/// Vertex indices to be flushed to the appropriate hardware index buffer
@@ -172,7 +174,7 @@ namespace Ogre
 			IsoVertexVector revmapIVI2HWVIQueue;
 
 			BuilderQueue(LOD * pResolution, const Touch3DFlags enStitches)
-				: resolution(pResolution), stitches(enStitches) {}
+				: resolution(pResolution), stitches(enStitches), resetting(false) {}
 		};
 
 		/** IsoSurfaceRenderable shadow meta data container, precomputed and cached frequently used data, synchronized with hardware buffers */
@@ -194,6 +196,8 @@ namespace Ogre
 				/// The LOD meta data corresponding to the batch
 				LOD * const resolution;
 
+				/// Whether to reset / clear the hardware GPU state first before applying the vertices and indices
+				bool & resetting;
 				/// Buffer of vertex elements to batch
 				BuilderQueue::VertexElementList & vertexQueue;
 				/// Buffer of the triangle index list to batch
@@ -254,9 +258,18 @@ namespace Ogre
 					QueueAccess(QueueAccess && move);
 					~QueueAccess();
 
-					/// Returns the number of required vertices to store in the hardware vertex buffer for the batch operation pending
+					/// Returns the number of required vertices to store in the hardware vertex buffer for the batch operation pending including vertices already present in the hardware buffer
 					inline
-					size_t getRequiredHardwareVertexCount() const { return resolution->getHWIndexBufferTail() + vertexQueue.size(); }
+					size_t requiredVertexCount() const { return resolution->getHWIndexBufferTail() + vertexQueue.size(); }
+
+					/// Returns the actual number of vertices required for storage in the hardware buffer accounting for buffer-resize and hence reset
+					inline
+					size_t actualVertexCount() const { return (!resetting ? resolution->getHWIndexBufferTail() : 0) + vertexQueue.size(); }
+
+					/// Returns the offset into the vertex buffer to begin populating vertex data at, will be zero if the vertex buffer was recently resized
+					inline
+					size_t vertexBufferOffset () const { return !resetting ? resolution->getHWIndexBufferTail() : 0; }
+
 					/// Updates the hardware state of the shadow meta data signalling that geometry has been batched
 					void consume();
 				} openQueue () /// Provides access to the geometry batch data container

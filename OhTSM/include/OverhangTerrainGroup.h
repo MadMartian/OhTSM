@@ -76,16 +76,21 @@ namespace Ogre
 				/** A background thread is currently saving a terrain page
 				Transition to one of: TSS_Neutral, TSS_SaveUnload */
 				TSS_Saving = 4,
-				/** A background thread is currently being exposed to gamma radiation
+				/** A background thread is currently being exposed to gamma radiation :p
 				Transition to one of: TSS_Neutral */
 				TSS_Mutate = 5,
+				/** A background thread is currently querying the slot
+				Transition to one of: TSS_Neutral */
+				TSS_Query = 6,
 				/** The slot is reserved for destruction in preparation for removing all terrain from the group once all background tasks have completed */
-				TSS_Destroy = 6
+				TSS_Destroy = 7
 			};
 
 		private:
 			/// For the TSS_NeighborQuery state, tracks which neighbors are enforcing the neighbor query state on this slot
 			size_t queryNeighbors;
+			/// Query stack count
+			size_t queryCount;
 			/// The current state
 			State _enState, 
 			/// The previous state
@@ -99,16 +104,21 @@ namespace Ogre
 					/// The terrain slot and page data will be removed from the scene and destroyed
 					JTT_Destroy,
 					/// The material for the page and its renderables will be set
-					JTT_SetMaterial
+					JTT_SetMaterial,
+					/// The render queue group for the page and its renderables will be set
+					JTT_SetQID
 				} 
 				/// The type of task to perform
 				type;
 				
+				/// Applies to all channel-related task types
+				Channel::Ident channel;
+
 				/// Applies to the JTT_SetMaterial task type
 				MaterialPtr material;
 
-				/// Applies to the JTT_SetMaterial task type
-				Channel::Ident channel;
+				/// Applies to the JTT_SetQID task type
+				int qid;
 			};
 			typedef std::queue< JoinTask > JoinTaskQueue;
 
@@ -156,9 +166,9 @@ namespace Ogre
 			/// @returns True if the slot in its current state may transition to TSS_Unloading
 			bool canUnload () const { return _enState == TSS_Neutral; }
 			/// @returns True if the slot in its current state may transition to TSS_Saving or TSS_SaveUnload
-			bool canSave () const { return _enState == TSS_Neutral; }
+			bool canSave () const { return _enState == TSS_Neutral || _enState == TSS_Query; }
 			/// @returns True if the slot in its current state allows interrogation and the terrain page isn't undergoing some kind of alteration / mutation in a background thread
-			bool canRead () const { return _enState == TSS_Neutral || _enState == TSS_Saving;}
+			bool canRead () const { return _enState == TSS_Neutral || _enState == TSS_Saving || _enState == TSS_Query;}
 			/// @returns True if the specified neighbor slot has this slot under TSS_NeighborQuery state
 			bool isNeighborQueried (const VonNeumannNeighbor evnNeighbor) const;
 			/// @returns True if this slot in its current state can neighbor query the specified neighbor slot
@@ -181,6 +191,11 @@ namespace Ogre
 			/// Transitions from the TSS_Mutate state back to TSS_Neutral, throws StateEx if the current slot state forbids the transition
 			void doneMutating();
 
+			/// Transitions to the TSS_Query state, throws StateEx if the current slot state forbids the transition
+			void query ();
+			/// Transitions from the TSS_Query state back to TSS_Neutral, throws StateEx if the current slot state forbids the transition
+			void doneQuery();
+
 			/// Transitions to the TSS_Loading state, throws StateEx if the current slot state forbids the transition
 			void loading ();
 			/// Transitions from the TSS_Loading state back to TSS_Neutral, throws StateEx if the current slot state forbids the transition
@@ -199,6 +214,9 @@ namespace Ogre
 
 			/// Sets the material of the page-wide channel or queues a request to do so if the slot is busy
 			void setMaterial (const Channel::Ident channel, MaterialPtr pMaterial);
+
+			/// Sets the render queue group of the page-wide channel or queues a request to do so if the slot is busy
+			void setRenderQueueGroup (const Channel::Ident channel, const int nQID);
 			
 			/// Deletes the page and marks the slot as TSS_Destroy or queues a request to do so if the slot is busy
 			void destroySlot ();
@@ -235,10 +253,14 @@ namespace Ogre
 		/// Origin in the world for this group of terrain pages
 		inline const Vector3 & getOrigin() const { return _ptOrigin; }
 
-		/// Sets the material used on all terrain renderables of the specified channel
+		/// Sets the material used on all renderables of the specified channel
 		void setMaterial (const Channel::Ident channel, const MaterialPtr & m);
-		/// Retrieves the material used on all terrain renderables of the specified channel
+		/// Retrieves the material used on all renderables of the specified channel
 		inline const MaterialPtr & getMaterial(const Channel::Ident channel) const { return _chanprops[channel].material; }
+		/// Sets the render queue group used on all renderables of the specified channel
+		void setRenderQueueGroup(const Channel::Ident channel, const int nQID);
+		/// Retrieves the render queue group used for all renderables of the specified channel
+		inline const int getRenderQueueGroup(const Channel::Ident channel) const { return _chanprops[channel].qid; }
 
 		/** Concurrently add a metaball to the scene.
 		@remarks A background request is initiated for adding the metaball to the scene and updating the respective voxel grids.
@@ -340,6 +362,7 @@ namespace Ogre
 		struct ChannelProperties
 		{
 			MaterialPtr material;
+			int qid;
 		};
 		/// Channel-specific properties
 		Channel::Index< ChannelProperties > _chanprops;

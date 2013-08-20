@@ -175,6 +175,8 @@ namespace Ogre
 
 		void HardwareIsoVertexShadow::ConsumerLock::QueueAccess::consume()
 		{
+			if (resetting)
+				resolution->clearHardwareState();
 			resolution->updateHardwareState(stitches, revmapIVI2HWVIQueue.begin(), revmapIVI2HWVIQueue.end());
 			_bDeconstruct = true;
 		}
@@ -214,6 +216,7 @@ namespace Ogre
 
 		HardwareIsoVertexShadow::ConcurrentProducerConsumerQueueBase::ConcurrentProducerConsumerQueueBase( BuilderQueue *& pBuilderQueue ) 
 		:	_pBuilderQueue(pBuilderQueue), 
+			resetting(pBuilderQueue->resetting),
 			resolution(pBuilderQueue->resolution), stitches(pBuilderQueue->stitches), 
 			vertexQueue(pBuilderQueue->vertexQueue), indexQueue(pBuilderQueue->indexQueue),
 			revmapIVI2HWVIQueue(pBuilderQueue->revmapIVI2HWVIQueue)
@@ -221,6 +224,7 @@ namespace Ogre
 
 		HardwareIsoVertexShadow::ConcurrentProducerConsumerQueueBase::ConcurrentProducerConsumerQueueBase( ConcurrentProducerConsumerQueueBase && move ) 
 		:	_pBuilderQueue(move._pBuilderQueue),
+			resetting(move.resetting),
 			resolution(move.resolution), stitches(move.stitches), 
 			vertexQueue(move.vertexQueue), indexQueue(move.indexQueue),
 			revmapIVI2HWVIQueue(move.revmapIVI2HWVIQueue)

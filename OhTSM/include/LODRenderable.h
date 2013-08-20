@@ -59,6 +59,15 @@ namespace Ogre
 			refineMinimumLevel2Distances();
 		}
 
+		/**
+		 * Called after the "_notifyCurrentCamera" method but before "getRenderOperation" by the RenderManager
+		 * to facilitate a pre-emptive pass of all renderable objects in the render queue and establish a unified
+		 * state of the collective renderable objects in the queue before the render operation for each of those 
+		 * renderable object is computed. 
+		 * @return True if the renderable can be rendered immediately, false if (background) processing is required before it is available for rendering.
+		 */
+		virtual bool determineRenderState() = 0;
+
         inline int getRenderLevel() const
 			{ return _nRenderLevel; };
 		void _adjustRenderLevel (int i)

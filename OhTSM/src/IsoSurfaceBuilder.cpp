@@ -325,6 +325,8 @@ namespace Ogre
 				pISR->getMetaWorldFragment() ->factory->surfaceFlags,
 				enStitches, pISR->getVertexBufferCapacity(nLOD)
 			);
+			if (_bResetHWBuffers)
+				_pResolution->clearHardwareState();
 			pISR->directlyPopulateBuffers(_pMainVtxElems, pResolution, enStitches, _pMainVtxElems->vertexShipment.size(), _pMainVtxElems->triangles.size() * 3);
 		}
 	}
@@ -347,6 +349,7 @@ namespace Ogre
 	{
 		oht_assert_threadmodel(ThrMdl_Single);
 
+		_bResetHWBuffers = false;
 		_pShadow = pShadow;
 		_pResolution = pResolution;
 		_nLOD = _pResolution->lod;
@@ -430,9 +433,9 @@ namespace Ogre
 		const size_t nRequiredHWBufferCapacity = _nHWBufPos + _pMainVtxElems->vertexShipment.size();
 		if (nRequiredHWBufferCapacity > nVertexBufferCapacity)
 		{
-			OHT_ISB_DBGTRACE("Buffer resized, " << nRequiredHWBufferCapacity << " > " << nVertexBufferCapacity);
+			OHT_DBGTRACE("Buffer resized, " << nRequiredHWBufferCapacity << " > " << nVertexBufferCapacity);
 				
-			_pResolution->clearHardwareState();
+			_bResetHWBuffers = true;
 
 			_nHWBufPos = 0;
 			_pMainVtxElems->rollback();
@@ -1347,6 +1350,8 @@ namespace Ogre
 	void IsoSurfaceBuilder::fillShadowQueues( HardwareIsoVertexShadow::ProducerQueueAccess & queue, const Real fVertScale )
 	{
 		oht_assert_threadmodel(ThrMdl_Background);
+
+		queue.resetting = _bResetHWBuffers;
 
 		for (IsoVertexVector::const_iterator i = _pMainVtxElems->vertexShipment.begin(); i != _pMainVtxElems->vertexShipment.end(); ++i)
 		{

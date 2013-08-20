@@ -94,7 +94,10 @@ namespace Ogre
 		{
 			for(MetaFragMap::iterator i = j->value->begin(); i != j->value->end(); ++i)
 			{
-				i->second->acquireBasicInterface().surface->setRenderQueueGroup(qid);
+				auto basic = i->second->acquire< MetaFragment::Interfaces::Basic> ();
+
+				if (basic.surface != NULL)
+					basic.surface->setRenderQueueGroup(qid);
 			}
 		}
 	}

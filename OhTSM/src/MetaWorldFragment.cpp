@@ -53,8 +53,9 @@ namespace Ogre
 
 		}
 
-		Core::Core( const MetaVoxelFactory * pFactory, Voxel::CubeDataRegion * pBlock, const YLevel & ylevel )
-			:	_bResetting(false), _pSceneNode(NULL),
+		Core::Core( RenderManager * pRendMan, const MetaVoxelFactory * pFactory, Voxel::CubeDataRegion * pBlock, const YLevel & ylevel )
+			:	_pRendMan(pRendMan),
+				_bResetting(false), _pSceneNode(NULL),
 				Post(pBlock, ylevel),
 
 			factory(pFactory),
@@ -378,6 +379,7 @@ namespace Ogre
 			const unsigned nLOD = surface->getEffectiveRenderLevel();
 			const Touch3DFlags t3dFlags = getNeighborFlags(nLOD);
 
+			// TODO: Breaks contract, potentially applying a mutation in query state.
 			if (_bResetting)
 				generateConfiguration(nLOD, t3dFlags);
 
@@ -523,8 +525,8 @@ namespace Ogre
 		}
 
 
-		Container::Container(const Voxel::MetaVoxelFactory * pFact, Voxel::CubeDataRegion * pDG, const YLevel yl /*= YLevel()*/)
-			: 	Core(pFact, pDG, yl), factory(pFact)
+		Container::Container(RenderManager * pRendMan, const Voxel::MetaVoxelFactory * pFact, Voxel::CubeDataRegion * pDG, const YLevel yl /*= YLevel()*/)
+			: 	Core(pRendMan, pFact, pDG, yl), factory(pFact)
 
 		{
 		}

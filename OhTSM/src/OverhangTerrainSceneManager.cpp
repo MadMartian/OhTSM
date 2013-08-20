@@ -72,6 +72,7 @@ Transvoxel conceived by Eric Lengyel (http://www.terathon.com/voxels/)
 #include "IsoSurfaceRenderable.h"
 
 #include "MetaBall.h"
+#include "RenderManager.h"
 
 #define TERRAIN_MATERIAL_NAME "OverhangTerrainSceneManager/Terrain"
 
@@ -83,6 +84,7 @@ namespace Ogre
 		: SceneManager(name), _pTerrainManager(NULL),
 		_pRoot(NULL)
 	{
+		_pRendMan = new RenderManager(this);
 		//setDisplaySceneNodes( true );
 		//setShowBoxes( true );
 	}
@@ -98,6 +100,7 @@ namespace Ogre
 	//-------------------------------------------------------------------------
 	OverhangTerrainSceneManager::~OverhangTerrainSceneManager()
 	{
+		delete _pRendMan;
 		shutdown();
 	}
 

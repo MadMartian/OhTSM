@@ -45,11 +45,16 @@ namespace Ogre
 	class _OverhangTerrainPluginExport MetaBaseFactory
 	{
 	public:
+		/// The render manager for synchronizing iso-surface rendering
+		RenderManager * const renderman;
+
 		/** 
+		@param pRendMan The render manager for synchronizing iso-surface rendering
 		@param opts The main top-level options
 		@param pManRsrcLoader A manual resource loader
 		*/
 		MetaBaseFactory (
+			RenderManager * pRendMan, 
 			const OverhangTerrainOptions & opts, 
 			ManualResourceLoader * pManRsrcLoader
 		);
@@ -89,7 +94,7 @@ namespace Ogre
 
 	private:
 		boost::mutex _mutex;
-
+		
 		/// The meta-information singleton that describes all voxel cube regions in the scene
 		Voxel::CubeDataRegionDescriptor * _pCubeMeta;
 		/// The main top-level configuration options

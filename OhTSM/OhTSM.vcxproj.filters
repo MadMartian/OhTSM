@@ -135,6 +135,9 @@
     <ClCompile Include="src\ChannelIndex.cpp">
       <Filter>Core Sources</Filter>
     </ClCompile>
+    <ClCompile Include="src\RenderManager.cpp">
+      <Filter>Core Sources</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\Util.h">
@@ -261,6 +264,9 @@
       <Filter>Core Headers</Filter>
     </ClInclude>
     <ClInclude Include="include\DataBase.h">
+      <Filter>Core Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\RenderManager.h">
       <Filter>Core Headers</Filter>
     </ClInclude>
   </ItemGroup>

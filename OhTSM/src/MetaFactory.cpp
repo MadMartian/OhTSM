@@ -101,13 +101,13 @@ namespace Ogre
 		MetaFragment::Container * MetaVoxelFactory::createMetaFragment( const AxisAlignedBox & bbox /* = AxisAlignedBox::BOX_NULL*/, const YLevel yl /*= YLevel()*/ ) const
 		{
 			//OHT_DBGTRACE("pos=" << pt << ", y-level=" << yl);
-			return new MetaFragment::Container(this, createDataGrid(bbox), yl);
+			return new MetaFragment::Container(this->base->renderman, this, createDataGrid(bbox), yl);
 		}
 
 		IsoSurfaceRenderable * MetaVoxelFactory::createIsoSurfaceRenderable( MetaFragment::Container * const pMWF, const String & sName ) const
 		{
 			oht_assert_threadmodel(ThrMdl_Single);
-			IsoSurfaceRenderable * pISR = new IsoSurfaceRenderable(_pVtxDecl, pMWF, _chanopts.maxGeoMipMapLevel, _chanopts.maxPixelError, sName);
+			IsoSurfaceRenderable * pISR = new IsoSurfaceRenderable(base->renderman, _pVtxDecl, pMWF, _chanopts.maxGeoMipMapLevel, _chanopts.maxPixelError, sName);
 			pISR->setCastShadows(true);
 			return pISR;
 		}
@@ -123,10 +123,12 @@ namespace Ogre
 	}
 
 	MetaBaseFactory::MetaBaseFactory(
+		RenderManager * pRendMan, 
 		const OverhangTerrainOptions & opts, 
 		ManualResourceLoader * pManRsrcLoader
 	) 
-		:	_pCubeMeta(new Voxel::CubeDataRegionDescriptor(opts.tileSize, opts.cellScale)),
+		:	renderman(pRendMan),
+			_pCubeMeta(new Voxel::CubeDataRegionDescriptor(opts.tileSize, opts.cellScale)),
 			_options(opts), 
 			_pManRsrcLoader(pManRsrcLoader),
 			_pVoxelFacts(NULL)

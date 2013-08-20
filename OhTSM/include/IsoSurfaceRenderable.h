@@ -45,6 +45,7 @@ namespace Ogre
 	{
 	public:
 		/** 
+		@param pRendMan The render manager for synchronizing all iso-surface renderings in the viewport
 		@param pVtxDecl The vertex declaration used for the mesh vertices
 		@param pMWF The meta-fragment that houses this renderable (one-to-one relationship)
 		@param nLODLevels The maximum quantity of detail levels supported for multi-resolution rendering
@@ -52,6 +53,7 @@ namespace Ogre
 		@param sName Optional OGRE name for the renderable
 		*/
 		IsoSurfaceRenderable(
+			RenderManager * pRendMan,
 			VertexDeclaration * pVtxDecl, 
 			MetaFragment::Container * pMWF, 
 			const size_t nLODLevels, 
@@ -84,6 +86,7 @@ namespace Ogre
 		virtual bool getNormaliseNormals(void) const { return true; }
 		virtual const AxisAlignedBox &getBoundingBox(void) const { return _bbox; }
 		void getRenderOperation( RenderOperation& op );
+		virtual bool determineRenderState();
 
 		/// Implementation of Ogre::SimpleRenderable
 		virtual Real getBoundingRadius(void) const { return _bbox.getHalfSize().length(); }
@@ -115,18 +118,26 @@ namespace Ogre
 	private:
 		/// The name of this thing
 		static String TYPE;
+		/// The render manager for synchronizing iso-surface rendering
+		RenderManager * const _pRendMan;
 		/// The shadow buffer and cached iso-vertex meta-data
 		SharedPtr< HardwareShadow::HardwareIsoVertexShadow > _pShadow;
 		/// The parent/owner MetaWorldFragment
 		MetaFragment::Container * _pMWF;
 		/// Current material used by this isosurface
 		MaterialPtr _pMaterial;    
+		/// Keeps track of the most recent render operation used and the current state
+		Touch3DFlags _t3df0, _t3df;
+		/// Keeps track of the most recent render operation used and the current state
+		int _lod0, _lod;
 		/// Keeps track of the most recent render operation used
-		Touch3DFlags _t3df0;
+		MeshData::Index _idx0;
 		/// Keeps track of the most recent render operation used
-		int _lod0;
-		/// Keeps track of the most recent render operation used
-		IndexData * _pIdxData0;
+		MeshData::VertexData _vtxdata0;
+
+#ifdef _DISPDBG
+		bool _bBoxDisplay;
+#endif
 
 		/// Bounding box of this renderable (always square)
 		AxisAlignedBox _bbox;

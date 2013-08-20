@@ -103,6 +103,7 @@ namespace Ogre
 	class MetaHeightMap;
 	class MetaBaseFactory;
 
+	class RenderManager;
 }
 //-----------------------------------------------------------------------
 // Windows Settings

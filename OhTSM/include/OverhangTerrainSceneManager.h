@@ -147,6 +147,11 @@ namespace Ogre
 		inline OverhangTerrainManager * getTerrainManager ()
 			{ return _pTerrainManager; }
 
+		/// Retrieves the render manager for synchronizing iso-surface rendering
+		inline RenderManager * getRenderManager() { return _pRendMan; }
+		/// Retrieves the render manager for synchronizing iso-surface rendering
+		inline const RenderManager * getRenderManager() const { return _pRendMan; }
+
 	protected:
 
 		/// The node to which all terrain tiles are attached
@@ -161,6 +166,9 @@ namespace Ogre
 	private:
 		/// The overhang terrain manager responsible for handling page load/unload and deformation
 		OverhangTerrainManager * _pTerrainManager;
+
+		/// The render manager for synchronizing surface tiles
+		RenderManager * _pRendMan;
 
 		friend class OverhangTerrainManager;
 	};

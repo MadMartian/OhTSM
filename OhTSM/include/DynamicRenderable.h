@@ -111,6 +111,9 @@ namespace Ogre
 				bool isEmpty () const { return _data.indexBuffer.isNull(); }
 				/// Returns the IndexData object
 				IndexData * getIndexData () { return &_data; }
+
+				/// Copies the object, does not duplicate the index hardware buffer in the _data member, just references it
+				Index & operator = (const Index & copy);
 			};
 			typedef std::map< size_t, Index > IndexDataMap;
 
@@ -126,10 +129,9 @@ namespace Ogre
 				/// Current capacity of, element count, and element size of the hardware vertex buffer
 				size_t _capacity, _count, _elemsize;
 
-				VertexData(const VertexData &);	// Copy not allowed
-
 			public:
 				VertexData(VertexDeclaration * pVtxDecl);
+				VertexData(const VertexData & copy); // Does not copy the hardware vertex buffer, only references it
 				VertexData(VertexData && move);
 				~VertexData();
 
@@ -144,8 +146,11 @@ namespace Ogre
 				size_t getCount() const { return _count; }
 				/// Actual capacity of the hardware buffer (element count, not byte size)
 				size_t getCapacity() const { return _capacity; }
+				/// Retrieve the hardware vertex buffer
 				HardwareVertexBufferSharedPtr getVertexBuffer () { return _buffer; }
 
+				// Copy the object, does not copy the hardware vertex buffer, only references it
+				VertexData & operator = (const VertexData & copy);
 			} vertices;
 
 			MeshData (MeshData && move);
@@ -172,12 +177,15 @@ namespace Ogre
 		MeshData ** _pvMeshData;
 
 		/// The vertex declaration used by all hardware buffers here
-		VertexDeclaration * _pVtxDecl;
+		VertexDeclaration * const _pVtxDecl;
 
 		/// The vertex buffer binding used for render operations here
-		VertexBufferBinding * _pVtxBB;
+		VertexBufferBinding * const _pVtxBB;
 
 	protected:
+		inline VertexDeclaration * vertexDeclaration() const { return _pVtxDecl; }
+		inline VertexBufferBinding * vertexBufferBinding() const { return _pVtxBB; }
+
 		/// Ensures minimum capacity (index count) of the hardware index buffer linked by the specified LOD and stitch configuration
 		bool prepareIndexBuffer(const unsigned nLOD, const size_t nStitchFlags, const size_t indexCount);
 		/** Ensures minimum capacity (vertex element count) of the hardware vertex buffer linked by the specified LOD

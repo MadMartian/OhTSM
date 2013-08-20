@@ -148,6 +148,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">pch.h</PrecompiledHeaderFile>
     </ClCompile>
+    <ClCompile Include="src\RenderManager.cpp" />
     <ClCompile Include="src\RLE.cpp" />
     <ClCompile Include="src\CubeDataRegionDescriptor.cpp" />
     <ClCompile Include="src\TerrainTile.cpp" />
@@ -191,6 +192,7 @@
     <ClInclude Include="include\OverhangTerrainSceneManager.h" />
     <ClInclude Include="include\PageSection.h" />
     <ClInclude Include="include\pch.h" />
+    <ClInclude Include="include\RenderManager.h" />
     <ClInclude Include="include\RLE.h" />
     <ClInclude Include="include\CubeDataRegionDescriptor.h" />
     <ClInclude Include="include\TerrainTile.h" />

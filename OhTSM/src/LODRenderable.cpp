@@ -51,6 +51,7 @@ namespace Ogre
 
 	void LODRenderable::_notifyCurrentCamera( Camera* cam )
 	{
+		OHT_DBGTRACE("Notify Camera for " << this);
 		MovableObject::_notifyCurrentCamera(cam);
 
 		if ( _nForcedRenderLevel >= 0 )

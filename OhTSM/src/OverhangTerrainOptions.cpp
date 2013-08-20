@@ -34,6 +34,7 @@ namespace Ogre
 			stream.read(&sMatGroup);
 			stream.read(&sMatName);
 			pOpts->material = MaterialManager::getSingleton().load(sMatName, sMatGroup);
+			stream.read(&pOpts->qid);
 			stream.read(&cEnumTemp);
 			pOpts->normals = static_cast< NormalsType > (cEnumTemp);
 			stream.read(&pOpts->transitionCellWidthRatio);
@@ -71,6 +72,7 @@ namespace Ogre
 				sMatGroup = opts.material->getGroup();
 			stream.write(&sMatGroup);
 			stream.write(&sMatName);
+			stream.write(&opts.qid);
 			cEnumTemp = opts.normals;
 			stream.write(&cEnumTemp);
 			stream.write(&opts.transitionCellWidthRatio);
@@ -101,7 +103,9 @@ namespace Ogre
 	:	materialPerTile(false),
 		normals(NT_Gradient),
 		flipNormals(false),
-		transitionCellWidthRatio(0.5f)
+		transitionCellWidthRatio(0.5f),
+		voxelRegionFlags(VRF_Gradient),
+		qid(RENDER_QUEUE_MAIN)
 	{
 	}
 

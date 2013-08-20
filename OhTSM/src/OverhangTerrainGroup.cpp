@@ -58,7 +58,7 @@ namespace Ogre
 		_ptOrigin(Vector3::ZERO), 
 		_descchan(sm->getOptions().channels.descriptor),
 		_sResourceGroup(sResourceGroup),
-		_factory(sm->getOptions(), pManRsrcLoader),
+		_factory(sm->getRenderManager(), sm->getOptions(), pManRsrcLoader),
 		_chanprops(sm->getOptions().channels.descriptor)
 	{
 		WorkQueue * wq = Root::getSingleton().getWorkQueue();
@@ -75,7 +75,10 @@ namespace Ogre
 
 		const Channel::Index< OverhangTerrainOptions::ChannelOptions > & channels = sm->getOptions().channels;
 		for (Channel::Index< OverhangTerrainOptions::ChannelOptions >::const_iterator i = channels.begin(); i != channels.end(); ++i)
+		{
 			setMaterial(i->channel, i->value->material);
+			setRenderQueueGroup(i->channel, i->value->qid);
+		}
 	}
 
 	OverhangTerrainGroup::~OverhangTerrainGroup()
@@ -562,8 +565,11 @@ namespace Ogre
 			pSceneNode = getSceneManager()->createSceneNode(name);
 		}
 		for (Channel::Index< ChannelProperties >::const_iterator i = _chanprops.begin(); i != _chanprops.end(); ++i)
+		{
 			if (!i->value->material.isNull())
 				page->setMaterial(i->channel, i->value->material);
+			page->setRenderQueue(i->channel, i->value->qid);
+		}
 
 		page->initialise(pSceneNode);
 	}
@@ -661,6 +667,18 @@ namespace Ogre
 			for (TerrainSlotMap::iterator i = _slots.begin(); i != _slots.end(); ++i)
 			{
 				i->second->setMaterial(channel, m);
+			}
+		}
+	}
+
+	void OverhangTerrainGroup::setRenderQueueGroup( const Channel::Ident channel, const int nQID )
+	{
+		if (nQID != _chanprops[channel].qid)
+		{
+			_chanprops[channel].qid = nQID;
+			for (TerrainSlotMap::iterator i = _slots.begin(); i != _slots.end(); ++i)
+			{
+				i->second->setRenderQueueGroup(channel, nQID);
 			}
 		}
 	}
@@ -791,6 +809,8 @@ namespace Ogre
 	{
 		RayResult result(false, Vector3::ZERO, NULL);
 
+		OHTDD_Clear();
+
 		const float fTolerance = std::numeric_limits< Real >::epsilon() * 10000.0f;
 
 		clamp(ray, fTolerance);
@@ -823,6 +843,8 @@ namespace Ogre
 			if (pSlot == NULL || pSlot == pSlot0 || pSlot->instance == NULL || !pSlot->canRead())
 				continue;
 
+			pSlot->query();
+
 			OHT_DBGTRACE(
 				"\t[" << pSlot->x << "x" << pSlot->y << "], " <<
 				"bbox=" << pSlot->instance->getBoundingBox()
@@ -839,7 +861,9 @@ namespace Ogre
 			OgreAssert(b0.x <= p.x && b0.z <= p.z && bN.x >= p.x && bN.z >= p.z, "Ray origin must be contained within the selected page");
 #endif // _DEBUG
 
-			if (pSlot->instance->rayIntersects(result, Ray(origin, direction), params, i.distance))
+			bool bResult = pSlot->instance->rayIntersects(result, Ray(origin, direction), params, i.distance);
+			pSlot->doneQuery();
+			if (bResult)
 				break;
 
 			pSlot0 = pSlot;
@@ -957,7 +981,7 @@ namespace Ogre
 	}
 
 	OverhangTerrainGroup::TerrainSlot::TerrainSlot( const int16 x, const int16 y ) 
-	: x(x), y(y), instance (NULL), data(NULL), _enState0(TSS_Empty), _enState(TSS_Empty), queryNeighbors(0)
+	: x(x), y(y), instance (NULL), data(NULL), _enState0(TSS_Empty), _enState(TSS_Empty), queryNeighbors(0), queryCount(0)
 	{
 
 	}
@@ -1065,6 +1089,26 @@ namespace Ogre
 		processPendingTasks();
 	}
 
+	void OverhangTerrainGroup::TerrainSlot::query()
+	{
+		if (_enState != TSS_Neutral && _enState != TSS_Query)
+			throw StateEx("State was not neutral or query");
+
+		queryCount++;
+		_enState = TSS_Query;
+	}
+
+	void OverhangTerrainGroup::TerrainSlot::doneQuery()
+	{
+		if (_enState != TSS_Query)
+			throw StateEx("State was not query");
+
+		if (--queryCount == 0)
+			_enState = TSS_Neutral;
+
+		processPendingTasks();
+	}
+
 	void OverhangTerrainGroup::TerrainSlot::loading()
 	{
 		if (_enState != TSS_Empty)
@@ -1123,6 +1167,9 @@ namespace Ogre
 			case JoinTask::JTT_SetMaterial:
 				instance->setMaterial(task.channel, task.material);
 				break;
+			case JoinTask::JTT_SetQID:
+				instance->setRenderQueue(task.channel, task.qid);
+				break;
 			}
 		}
 	}
@@ -1136,6 +1183,20 @@ namespace Ogre
 			JoinTask task;
 			task.type = JoinTask::JTT_SetMaterial;
 			task.material = pMaterial;
+			task.channel = channel;
+			_qJoinTasks.push(task);
+		}
+	}
+
+	void OverhangTerrainGroup::TerrainSlot::setRenderQueueGroup( const Channel::Ident channel, const int nQID )
+	{
+		if (_enState == TSS_Neutral)
+			instance->setRenderQueue(channel, nQID);
+		else
+		{
+			JoinTask task;
+			task.type = JoinTask::JTT_SetQID;
+			task.qid = nQID;
 			task.channel = channel;
 			_qJoinTasks.push(task);
 		}

@@ -35,6 +35,7 @@ http://www.gnu.org/copyleft/lesser.txt.
 #include "IsoSurfaceBuilder.h"
 #include "MetaWorldFragment.h"
 #include "Util.h"
+#include "RenderManager.h"
 #include "DebugTools.h"
 
 namespace Ogre
@@ -44,10 +45,14 @@ namespace Ogre
 
 	Ogre::String IsoSurfaceRenderable::TYPE = "IsoSurface";
 
-	IsoSurfaceRenderable::IsoSurfaceRenderable(VertexDeclaration * pVtxDecl, MetaFragment::Container * pMWF, const size_t nLODLevels, const Real fPixelError, const Ogre::String & sName /*= ""*/)
+	IsoSurfaceRenderable::IsoSurfaceRenderable(RenderManager * pRendMan, VertexDeclaration * pVtxDecl, MetaFragment::Container * pMWF, const size_t nLODLevels, const Real fPixelError, const Ogre::String & sName /*= ""*/)
 	:	DynamicRenderable(pVtxDecl, RenderOperation::OT_TRIANGLE_LIST, true, nLODLevels, fPixelError, sName), 
-		_pMWF(pMWF), _bbox(pMWF->acquireBasicInterface().block->getBoxSize()), _pShadow(new HardwareIsoVertexShadow(nLODLevels)), _t3df0(T3DS_None), _lod0(-1), _pIdxData0(NULL)
+		_pRendMan(pRendMan), _pMWF(pMWF), _bbox(pMWF->acquireBasicInterface().block->getBoxSize()), _pShadow(new HardwareIsoVertexShadow(nLODLevels)), 
+		_vtxdata0(pVtxDecl), _t3df0(T3DS_None), _t3df(T3DS_None), _lod0(-1), _lod(-1)
 	{
+#ifdef _DISPDBG
+		_bBoxDisplay = false;
+#endif
 	}
 
 	IsoSurfaceRenderable::~IsoSurfaceRenderable()
@@ -63,7 +68,7 @@ namespace Ogre
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
 
-		prepareVertexBuffer(queue.resolution->lod, queue.getRequiredHardwareVertexCount(), queue.resolution->isResetHWBuffers());
+		prepareVertexBuffer(queue.resolution->lod, queue.requiredVertexCount(), queue.resolution->isResetHWBuffers());
 		queue.resolution->clearResetHWBuffersFlag();
 		prepareIndexBuffer(queue.resolution->lod, queue.stitches, queue.indexQueue.size());
 		auto pair = getMeshData(queue.resolution->lod, queue.stitches);		
@@ -78,7 +83,7 @@ namespace Ogre
 		{
 			unsigned char * pOffset = static_cast< unsigned char * > (
 				pVtxBuffer->lock(
-					queue.resolution->getHWIndexBufferTail() * nVertexByteSize,
+					queue.vertexBufferOffset() * nVertexByteSize,
 					queue.vertexQueue.size() * nVertexByteSize,
 					HardwareBuffer::HBL_DISCARD
 				)
@@ -120,6 +125,8 @@ namespace Ogre
 
 		if (!queue.indexQueue.empty())
 		{
+			OgreAssert(pIdxBuffer != _idx0.getIndexData()->indexBuffer, "Overwriting index-buffer currently in-use");
+
 			HWVertexIndex * pIndex = static_cast< HWVertexIndex * > (
 				pIdxBuffer->lock(HardwareBuffer::HBL_DISCARD)
 			);
@@ -235,31 +242,63 @@ namespace Ogre
 
 		DynamicRenderable::getRenderOperation(op);
 
-		const int nLOD = getEffectiveRenderLevel();
-		auto fragment = _pMWF->acquire< MetaFragment::Interfaces::Upgradable >();
-		Touch3DFlags t3dTransition = fragment.getNeighborFlags(nLOD);
+		MeshData::VertexData * pVtxDataUse = _vtxdata0.isEmpty() ? NULL : &_vtxdata0;
+		MeshData::Index * pIdxUse = _idx0.isEmpty() ? NULL : &_idx0;
 
-		if (_pIdxData0 != NULL)
-			op.indexData = _pIdxData0;
-
-		if (nLOD != _lod0 || t3dTransition != _t3df0)
+		if ((_lod != _lod0 || _t3df != _t3df0) && _pRendMan->queue(getRenderQueueGroup()) ->isCurrentRenderStateAvailable() && isConfigurationBuilt(_lod, _t3df))
 		{
-			MetaFragment::Interfaces::Upgraded upgraded = fragment.upgrade();
+			auto & pair = getMeshData(_lod, _t3df);
+			pVtxDataUse = pair.first;
+			pIdxUse = pair.second;
 
-			if (upgraded.generateConfiguration(nLOD, t3dTransition))
-			{
-				_lod0 = nLOD;
-				_t3df0 = t3dTransition;
-				_pIdxData0 = 
-					op.indexData = getMeshData(nLOD, t3dTransition).second->getIndexData();
+			_vtxdata0 = *pair.first;
+			_idx0 = *pair.second;
 
-				MeshData::VertexData * pVtxData = getVertexData(nLOD);
-				op.vertexData->vertexBufferBinding->setBinding(0, pVtxData->getVertexBuffer());
-				op.vertexData->vertexCount = pVtxData->getCount();
-			}
+			_lod0 = _lod;
+			_t3df0 = _t3df;
 		}
 
+		if (pVtxDataUse != NULL)
+		{
+			op.vertexData->vertexBufferBinding->setBinding(0, pVtxDataUse->getVertexBuffer());
+			op.vertexData->vertexCount = pVtxDataUse->getCount();
+		}
+		if (pIdxUse != NULL)
+		{
+			op.useIndexes = true;
+			op.indexData = pIdxUse->getIndexData();
+		} else
+			op.useIndexes = false;
+
+#if defined(_DISPDBG) && defined(_CHECK_HW_BUFFERS)
+		if (pVtxDataUse != NULL && pIdxUse != NULL)
+		{
+			if (!_pRendMan->checkBuffers(op.indexData, pVtxDataUse->getVertexBuffer(), vertexDeclaration(), const_cast< const MetaFragment::Container * > (_pMWF)->acquire< MetaFragment::Interfaces::const_Basic > () .block->meta.scale * float(1 << _lod)))
+			{
+				if (!_bBoxDisplay)
+				{
+					OHTDD_Cube(const_cast< const MetaFragment::Container * > (_pMWF)->acquire< MetaFragment::Interfaces::const_Basic > ().block->getBoundingBox());
+					_bBoxDisplay = true;
+				}
+			}
+		}
+#endif
+
 		OgreAssert(op.indexData != NULL, "Index data was null");
+	}
+
+	bool IsoSurfaceRenderable::determineRenderState()
+	{
+		auto fragment = _pMWF->acquire< MetaFragment::Interfaces::Upgradable >();
+		_lod = getEffectiveRenderLevel();
+		_t3df = fragment.getNeighborFlags(_lod);
+
+		MetaFragment::Interfaces::Upgraded upgraded = fragment.upgrade();
+
+		if (upgraded.requestConfiguration(_lod, _t3df))
+			return true;
+
+		return _idx0.isEmpty() || _vtxdata0.isEmpty();
 	}
 
 	void IsoSurfaceRenderable::computeMinimumLevels2Distances( const Real & fErrorFactorSqr, Real * pfMinLev2DistSqr, const size_t nCount )
@@ -275,7 +314,6 @@ namespace Ogre
 		DynamicRenderable::wipeBuffers();
 		_t3df0 = T3DS_None;
 		_lod0 = -1;
-		_pIdxData0 = NULL;
 		_pShadow->reset(); // TODO: Can potentially block
 	}
 
@@ -283,7 +321,6 @@ namespace Ogre
 	{
 		_t3df0 = T3DS_None;
 		_lod0 = -1;
-		_pIdxData0 = NULL;
 		return DynamicRenderable::prepareVertexBuffer(nLOD, vertexCount, bClearIndicesToo);
 	}
 

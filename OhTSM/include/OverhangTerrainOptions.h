@@ -96,6 +96,8 @@ namespace Ogre
 			Real maxPixelError;
 			/// Ratio of space that a transition cell takes-up of a normal regular grid cell
 			Real transitionCellWidthRatio;
+			/// Render queue group ID for all renderables represented by the channel
+			int qid;
 
 			/// Flags describing what channels of a CubeDataRegion are relevant
 			OverhangTerrainVoxelRegionFlags voxelRegionFlags;
