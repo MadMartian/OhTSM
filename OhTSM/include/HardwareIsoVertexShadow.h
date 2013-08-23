@@ -181,7 +181,7 @@ namespace Ogre
 		class HardwareIsoVertexShadow
 		{
 		private:
-			OGRE_MUTEX(_mutex);
+			OGRE_RW_MUTEX(_mutex);
 
 			/** Container for the geometry batch data and associated shadow meta data for a pending GPU batch operation */
 			class ConcurrentProducerConsumerQueueBase
@@ -221,7 +221,7 @@ namespace Ogre
 				/// Disable copy constructor
 				ConsumerLock(const ConsumerLock &);
 
-				boost::recursive_mutex::scoped_try_lock _lock;
+				boost::shared_lock< boost::shared_mutex > _lock;
 
 				/// Reference pointer to the hardware buffer batch data container
 				BuilderQueue *& _pBuilderQueue;
@@ -235,7 +235,7 @@ namespace Ogre
 				bool isValid () const { return _lock && _pBuilderQueue != NULL && _pBuilderQueue->resolution == _pResolution && _pBuilderQueue->stitches == _enStitches; }
 
 			public:
-				ConsumerLock(boost::recursive_mutex::scoped_try_lock && lock, BuilderQueue *& pBuilderQueue, LOD * pResolution, const Touch3DFlags enStitches);
+				ConsumerLock(boost::shared_lock< boost::shared_mutex > && lock, BuilderQueue *& pBuilderQueue, LOD * pResolution, const Touch3DFlags enStitches);
 				ConsumerLock(ConsumerLock && move);
 
 				/// @returns True if the shared lock was NOT acquired
@@ -287,7 +287,7 @@ namespace Ogre
 			private:
 				ProducerQueueAccess (const ConcurrentProducerConsumerQueueBase &);
 
-				boost::recursive_mutex::scoped_lock _lock;
+				boost::unique_lock< boost::shared_mutex > _lock;
 
 				/// Deletes and reconstructs the specified geometry bach data container object
 				BuilderQueue *& reallocate(BuilderQueue *& pBuilderQueue, LOD * pResolution, const Touch3DFlags enStitches);
@@ -300,8 +300,27 @@ namespace Ogre
 				@param pResolution Identifies the LOD of the batch operation
 				@param enStitches Identifies the stitch configuration of the batch operation
 				*/
-				ProducerQueueAccess(boost::recursive_mutex::scoped_lock && lock, BuilderQueue *& pBuilderQueue, LOD * pResolution, const Touch3DFlags enStitches);
+				ProducerQueueAccess(boost::unique_lock< boost::shared_mutex > && lock, BuilderQueue *& pBuilderQueue, LOD * pResolution, const Touch3DFlags enStitches);
 				ProducerQueueAccess(ProducerQueueAccess && move);
+			};
+
+			/** Used to read geometry without mutation, implies a read-lock */
+			class ReadOnlyAccess
+			{
+			private:
+				boost::shared_lock< boost::shared_mutex > _lock;
+
+			public:
+				/// The resolution requested for read-only access
+				const LOD * const resolution;
+
+				/** Begin read-only access for reading resolution data.
+				@remarks Implies an existing lock providing const-access to the specified resolution
+				@param lock An existing read-lock
+				@param pResolution The resolution to expose
+				*/
+				ReadOnlyAccess(boost::shared_lock< boost::shared_mutex > && lock, const LOD * pResolution);
+				ReadOnlyAccess(ReadOnlyAccess && move);
 			};
 
 			/// Initialize with the specified maximum quantity of resolutions allowed from maximum resolution
@@ -316,6 +335,8 @@ namespace Ogre
 			ConsumerLock requestConsumerLock(const unsigned char nLOD, const Touch3DFlags enStitches);
 			/// Request an exclusive read/write lock on shadow data pertinent to the specified LOD and stitch configuration
 			ProducerQueueAccess requestProducerQueue(const unsigned char nLOD, const Touch3DFlags enStitches);
+			/// Requests read-only access on shadow data pertinent to the specified LOD
+			ReadOnlyAccess requestReadOnlyAccess(const unsigned char nLOD);
 			/// Retrieve the LOD meta data container for the specified LOD ordinal (zero is highest resolution, >0 is lower resolution)
 			LOD * getDirectAccess(const unsigned char nLOD) { return _vpResolutions[nLOD]; }
 

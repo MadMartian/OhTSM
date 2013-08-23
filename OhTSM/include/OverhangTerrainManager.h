@@ -39,8 +39,6 @@ http://www.gnu.org/copyleft/lesser.txt.
 #include "Types.h"
 #include "ChannelIndex.h"
 #include "OverhangTerrainOptions.h"
-#include "IsoSurfaceBuilder.h"
-#include "CubeDataRegion.h"
 
 namespace Ogre
 {

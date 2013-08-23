@@ -379,10 +379,6 @@ namespace Ogre
 			const unsigned nLOD = surface->getEffectiveRenderLevel();
 			const Touch3DFlags t3dFlags = getNeighborFlags(nLOD);
 
-			// TODO: Breaks contract, potentially applying a mutation in query state.
-			if (_bResetting)
-				generateConfiguration(nLOD, t3dFlags);
-
 			return factory->base->getIsoSurfaceBuilder()
 				->rayQuery(
 					limit,
