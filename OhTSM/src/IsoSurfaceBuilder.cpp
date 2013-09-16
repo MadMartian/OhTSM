@@ -274,24 +274,26 @@ namespace Ogre
 
 	void IsoSurfaceBuilder::queueBuild( const MetaFragment::Container * pMF, SharedPtr< HardwareShadow::HardwareIsoVertexShadow > pShadow, const Channel::Ident channel, const unsigned lod, const size_t nSurfaceFlags, const Touch3DFlags enStitches, const size_t nVertexBufferCapacity )
 	{
-		oht_assert_threadmodel(ThrMdl_Background);
+		{ OGRE_LOCK_MUTEX(mMutex);
+			oht_assert_threadmodel(ThrMdl_Background);
 
-		HardwareIsoVertexShadow::ProducerQueueAccess queue = pShadow->requestProducerQueue(lod, enStitches);
+			HardwareIsoVertexShadow::ProducerQueueAccess queue = pShadow->requestProducerQueue(lod, enStitches);
 				
-		auto fragment = pMF->acquire< MetaFragment::Interfaces::const_Basic >();
+			auto fragment = pMF->acquire< MetaFragment::Interfaces::const_Basic >();
 
-#if defined(_DEBUG) || defined(_OHT_LOG_TRACE)
-		DebugInfo debugs = DebugInfo(fragment.surface);
-#endif
+	#if defined(_DEBUG) || defined(_OHT_LOG_TRACE)
+			DebugInfo debugs = DebugInfo(fragment.surface);
+	#endif
 
-		buildImpl(
-#if defined(_DEBUG) || defined(_OHT_LOG_TRACE)
-			debugs,
-#endif // _DEBUG
-			channel,
-			queue.resolution, fragment.block, pShadow, nSurfaceFlags, enStitches, nVertexBufferCapacity
-		);
-		fillShadowQueues(queue, fragment.block->getGridScale());
+			buildImpl(
+	#if defined(_DEBUG) || defined(_OHT_LOG_TRACE)
+				debugs,
+	#endif // _DEBUG
+				channel,
+				queue.resolution, fragment.block, pShadow, nSurfaceFlags, enStitches, nVertexBufferCapacity
+			);
+			fillShadowQueues(queue, fragment.block->getGridScale());
+		}
 	}
 
 	void IsoSurfaceBuilder::build( const Voxel::CubeDataRegion * pDataGrid, IsoSurfaceRenderable * pISR, const unsigned nLOD, const Touch3DFlags enStitches )
