@@ -38,6 +38,7 @@ http://www.gnu.org/copyleft/lesser.txt.
 #include "IsoVertexElements.h"
 #include "IsoSurfaceRenderable.h"
 #include "PageSection.h"
+#include "TerrainTile.h"
 #include "IsoSurfaceBuilder.h"
 
 #define NCELLS 64
@@ -405,9 +406,7 @@ namespace Ogre
 					using namespace HardwareShadow;
 
 					SurfaceGenRequest reqdata = any_cast<SurfaceGenRequest>(req->getData());
-					HardwareIsoVertexShadow::ProducerQueueAccess queue = reqdata.shadow->requestProducerQueue(reqdata.lod, reqdata.stitches);
 					IsoSurfaceBuilder * pISB = _factory.getIsoSurfaceBuilder();
-					auto fragment = reqdata.mf->acquire< MetaFragment::Interfaces::const_Basic >();
 
 					pISB->queueBuild(reqdata.mf, reqdata.shadow, reqdata.channel, reqdata.lod, reqdata.surfaceFlags, reqdata.stitches, reqdata.vertexBufferCapacity);
 					response  = new WorkQueue::Response(req, true, Any());				
@@ -432,6 +431,9 @@ namespace Ogre
 		{
 		case AddMetaObject:
 			pOrigin = any_cast< MetaBallWorkRequest > (res->getRequest()->getData()) .origin;
+			break;
+		case BuildSurface:
+			pOrigin = any_cast< SurfaceGenRequest > (res->getRequest()->getData()) .origin;
 			break;
 		default:
 			pOrigin = any_cast< WorkRequest > (res->getRequest()->getData()) .origin;
@@ -1008,6 +1010,8 @@ namespace Ogre
 		oht_assert_threadmodel(ThrMdl_Main);
 		SurfaceGenRequest reqdata;
 
+		reqdata.origin = this;
+		reqdata.slot = pMF->tile->page->slot;
 		reqdata.mf = pMF;
 		const Voxel::MetaVoxelFactory * pFactory = pMF->factory;
 		reqdata.shadow = pISR->getShadow();

@@ -51,21 +51,16 @@ namespace Ogre
 
 	namespace MetaFragment 
 	{
-		Post::Post(TerrainTile * pTile, Voxel::CubeDataRegion * pCubeDataRegoin, const YLevel & ylevel /*= YLevel()*/) 
-		: tile(pTile), block(pCubeDataRegoin), ylevel(ylevel), surface(NULL), custom(NULL)
+		Post::Post(Voxel::CubeDataRegion * pCubeDataRegoin, const YLevel & ylevel /*= YLevel()*/) 
+		: block(pCubeDataRegoin), ylevel(ylevel), surface(NULL), custom(NULL)
 		{
 
 		}
 
-		void Post::configurationResponse()
-		{
-			this->tile->page->slot->doneQuery();
-		}
-
-		Core::Core( RenderManager * pRendMan, const MetaVoxelFactory * pFactory, TerrainTile * pTile, Voxel::CubeDataRegion * pBlock, const YLevel & ylevel )
+		Core::Core( RenderManager * pRendMan, const MetaVoxelFactory * pFactory, Voxel::CubeDataRegion * pBlock, const YLevel & ylevel )
 			:	_pRendMan(pRendMan),
 				_bResetting(false), _pSceneNode(NULL),
-				Post(pTile, pBlock, ylevel),
+				Post(pBlock, ylevel),
 
 			factory(pFactory),
 			_pMatInfo(NULL), _nLOD_Requested0(~0), _enStitches_Requested0((Touch3DFlags)~0), _ridBuilderLast(~0)
@@ -141,7 +136,7 @@ namespace Ogre
 			surface->deleteGeometry();
 			_bResetting = false;
 			if (_ridBuilderLast != ~0)
-				tile->page->slot->group->cancelRequest(_ridBuilderLast);
+				static_cast< Container * > (this) ->tile->page->slot->group->cancelRequest(_ridBuilderLast);
 
 			_ridBuilderLast = ~0;
 			_nLOD_Requested0 = ~0;
@@ -178,7 +173,7 @@ namespace Ogre
 
 			if (_bResetting)
 			{
-				OverhangTerrainGroup * grp = this->tile->page->slot->group;
+				OverhangTerrainGroup * grp = static_cast< Container * > (this) ->tile->page->slot->group;
 
 				surface->deleteGeometry();
 				_bResetting = false;
@@ -200,17 +195,17 @@ namespace Ogre
 					return true;
 				} else
 				if (
-					this->tile->page->slot->canRead() &&		// Page is busy
+					static_cast< Container * > (this) ->tile->page->slot->canRead() &&		// Page is busy
 					(_nLOD_Requested0 != nLOD || _enStitches_Requested0 != enStitches)	// IsoSurfaceBuilder is busy, no data available yet
 				)
 				{
-					OverhangTerrainGroup * grp = this->tile->page->slot->group;
+					OverhangTerrainGroup * grp = static_cast< Container * > (this) ->tile->page->slot->group;
 
-					this->tile->page->slot->query();
+					static_cast< Container * > (this) ->tile->page->slot->query();
 					if (_ridBuilderLast != ~0)
 						grp->cancelRequest(_ridBuilderLast);
 
-					_ridBuilderLast = grp->generateSurfaceConfiguration(static_cast< MetaFragment::Container * > (this), surface, nLOD, enStitches);
+					_ridBuilderLast = grp->generateSurfaceConfiguration(static_cast< Container * > (this), surface, nLOD, enStitches);
 					_nLOD_Requested0 = nLOD;
 					_enStitches_Requested0 = enStitches;
 				}
@@ -538,7 +533,7 @@ namespace Ogre
 
 
 		Container::Container(RenderManager * pRendMan, const Voxel::MetaVoxelFactory * pFact, TerrainTile * pTile, Voxel::CubeDataRegion * pDG, const YLevel yl /*= YLevel()*/)
-			: 	Core(pRendMan, pFact, pTile, pDG, yl), factory(pFact)
+			: 	Core(pRendMan, pFact, pDG, yl), factory(pFact), tile(pTile)
 
 		{
 		}
