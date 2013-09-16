@@ -38,6 +38,7 @@ http://www.gnu.org/copyleft/lesser.txt.
 #include "IsoVertexElements.h"
 #include "IsoSurfaceRenderable.h"
 #include "PageSection.h"
+#include "IsoSurfaceBuilder.h"
 
 #define NCELLS 64
 #define SCALE 2.9296875
@@ -92,12 +93,12 @@ namespace Ogre
 		wq->removeResponseHandler(_nWorkQChannel, this);
 	}
 
-	PageSection * OverhangTerrainGroup::createPage()
+	PageSection * OverhangTerrainGroup::createPage( OverhangTerrainSlot * pSlot )
 	{
-		return OGRE_NEW PageSection(this, &_factory, _descchan);
+		return OGRE_NEW PageSection(this, pSlot, &_factory, _descchan);
 	}
 
-	OverhangTerrainGroup::TerrainSlot* OverhangTerrainGroup::getTerrainSlot(const int16 x, const int16 y, bool createIfMissing)
+	OverhangTerrainSlot* OverhangTerrainGroup::getTerrainSlot(const int16 x, const int16 y, bool createIfMissing)
 	{
 		PageID key = calculatePageID(x, y);
 		TerrainSlotMap::iterator i = _slots.find(key);
@@ -105,14 +106,14 @@ namespace Ogre
 			return i->second;
 		else if (createIfMissing)
 		{
-			TerrainSlot* slot = new TerrainSlot(x, y);
+			OverhangTerrainSlot* slot = new OverhangTerrainSlot(this, x, y);
 			_slots[key] = slot;
 			return slot;
 		}
 		return 0;
 	}
 	//---------------------------------------------------------------------
-	OverhangTerrainGroup::TerrainSlot* OverhangTerrainGroup::getTerrainSlot(const int16 x, const int16 y) const
+	OverhangTerrainSlot* OverhangTerrainGroup::getTerrainSlot(const int16 x, const int16 y) const
 	{
 		PageID key = calculatePageID(x, y);
 		TerrainSlotMap::const_iterator i = _slots.find(key);
@@ -124,17 +125,17 @@ namespace Ogre
 	bool OverhangTerrainGroup::defineTerrain( const int16 x, const int16 y, const bool bLoad /*= true*/, bool synchronous /*= false*/ )
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
-		TerrainSlot * slot = getTerrainSlot(x, y, true);
+		OverhangTerrainSlot * slot = getTerrainSlot(x, y, true);
 
-		if (slot->state() != TerrainSlot::TSS_Empty || !bLoad)
+		if (slot->state() != OverhangTerrainSlot::TSS_Empty || !bLoad)
 			return true;
 
 		if (tryLockNeighborhood(slot))
 		{
 			OHT_DBGTRACE("LOAD " << slot->x << 'x' << slot->y);
 
-			slot->instance = createPage();
-			slot->data = new TerrainSlot::LoadData(options, x, y);
+			slot->instance = createPage(slot);
+			slot->data = new OverhangTerrainSlot::LoadData(options, x, y);
 			slot->loading();
 
 			WorkRequest req;
@@ -151,7 +152,7 @@ namespace Ogre
 	}
 
 	// THREAD: Worker
-	bool OverhangTerrainGroup::defineTerrain_worker( TerrainSlot * slot )
+	bool OverhangTerrainGroup::defineTerrain_worker( OverhangTerrainSlot * slot )
 	{
 		bool bStatus = false;
 
@@ -191,7 +192,7 @@ namespace Ogre
 		return bStatus;
 	}
 
-	void OverhangTerrainGroup::defineTerrain_response( TerrainSlot* slot )
+	void OverhangTerrainGroup::defineTerrain_response( OverhangTerrainSlot* slot )
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
 
@@ -249,7 +250,7 @@ namespace Ogre
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
 
-		TerrainSlot * pSlot = getTerrainSlot(x, y);
+		OverhangTerrainSlot * pSlot = getTerrainSlot(x, y);
 		if (pSlot == NULL)
 			return true;
 
@@ -271,7 +272,7 @@ namespace Ogre
 			return false;
 	}
 
-	void OverhangTerrainGroup::unloadTerrainImpl( TerrainSlot * pSlot, const bool synchronous /*= false */ )
+	void OverhangTerrainGroup::unloadTerrainImpl( OverhangTerrainSlot * pSlot, const bool synchronous /*= false */ )
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
 
@@ -293,7 +294,7 @@ namespace Ogre
 			Any(req), 0, synchronous);
 	}
 
-	void OverhangTerrainGroup::unloadTerrain_worker( TerrainSlot * slot, UnloadPageResponseData & respdata )
+	void OverhangTerrainGroup::unloadTerrain_worker( OverhangTerrainSlot * slot, UnloadPageResponseData & respdata )
 	{
 		OHT_DBGTRACE("Unload terrain " << slot->x << 'x' << slot->y);
 
@@ -305,7 +306,7 @@ namespace Ogre
 				respdata.dispose->push_back(i->acquireBasicInterface().surface);
 	}
 
-	void OverhangTerrainGroup::unloadTerrain_response( TerrainSlot * pSlot, UnloadPageResponseData &data )
+	void OverhangTerrainGroup::unloadTerrain_response( OverhangTerrainSlot * pSlot, UnloadPageResponseData &data )
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
 
@@ -331,6 +332,9 @@ namespace Ogre
 		{
 		case AddMetaObject:
 			pOrigin = any_cast< MetaBallWorkRequest > (req->getData()) .origin;
+			break;
+		case BuildSurface:
+			pOrigin = any_cast< SurfaceGenRequest > (req->getData()).origin;
 			break;
 		default:
 			pOrigin = any_cast< WorkRequest > (req->getData()) .origin;
@@ -394,6 +398,19 @@ namespace Ogre
 						lreq.excavating
 					);
 					response = new WorkQueue::Response(req, true, Any());
+				}
+				break;
+			case BuildSurface:
+				{
+					using namespace HardwareShadow;
+
+					SurfaceGenRequest reqdata = any_cast<SurfaceGenRequest>(req->getData());
+					HardwareIsoVertexShadow::ProducerQueueAccess queue = reqdata.shadow->requestProducerQueue(reqdata.lod, reqdata.stitches);
+					IsoSurfaceBuilder * pISB = _factory.getIsoSurfaceBuilder();
+					auto fragment = reqdata.mf->acquire< MetaFragment::Interfaces::const_Basic >();
+
+					pISB->queueBuild(reqdata.mf, reqdata.shadow, reqdata.channel, reqdata.lod, reqdata.surfaceFlags, reqdata.stitches, reqdata.vertexBufferCapacity);
+					response  = new WorkQueue::Response(req, true, Any());				
 				}
 				break;
 			}
@@ -478,6 +495,12 @@ namespace Ogre
 				addMetaBall_response(lreq.slots.begin(), lreq.slots.end());
 			}
 			break;
+		case BuildSurface:
+			{
+				SurfaceGenRequest lreq = any_cast<SurfaceGenRequest>(res->getRequest()->getData());
+				lreq.slot->doneQuery();
+			}
+			break;
 		case DestroyAll:
 			clear_response();
 			break;
@@ -485,7 +508,7 @@ namespace Ogre
 	}
 
 	// THREAD: *Main
-	bool OverhangTerrainGroup::saveTerrain( TerrainSlot * pSlot, const bool synchronous /*= false*/ )
+	bool OverhangTerrainGroup::saveTerrain( OverhangTerrainSlot * pSlot, const bool synchronous /*= false*/ )
 	{
 		// Enforce a fully-loaded page in the slot
 		// TODO: Has failed:
@@ -503,7 +526,7 @@ namespace Ogre
 			return false;
 	}
 
-	void OverhangTerrainGroup::saveTerrain_worker( TerrainSlot * pSlot )
+	void OverhangTerrainGroup::saveTerrain_worker( OverhangTerrainSlot * pSlot )
 	{
 		PageSection * pPage = pSlot->instance;
 		const ulong nTotalPageSize = options.getTotalPageSize();
@@ -533,16 +556,16 @@ namespace Ogre
 		}
 	}
 
-	void OverhangTerrainGroup::saveTerrain_response( TerrainSlot * slot )
+	void OverhangTerrainGroup::saveTerrain_response( OverhangTerrainSlot * slot )
 	{
 		slot->doneSaving();
 
-		if (slot->state() == TerrainSlot::TSS_Unloading)
+		if (slot->state() == OverhangTerrainSlot::TSS_Unloading)
 			unloadTerrainImpl(slot);
 	}
 
 	// THREAD: *Main
-	void OverhangTerrainGroup::preparePage(PageSection * const page, const TerrainSlot::LoadData * data)
+	void OverhangTerrainGroup::preparePage(PageSection * const page, const OverhangTerrainSlot::LoadData * data)
 	{
 		String name;
 
@@ -578,7 +601,7 @@ namespace Ogre
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
 
-		TerrainSlot * pSlot;
+		OverhangTerrainSlot * pSlot;
 
 		// WEST linkage
 		pSlot = getTerrainSlot(x - _pxi, y);
@@ -631,7 +654,7 @@ namespace Ogre
 			if (i->second->canDestroy())
 				i->second->destroy();
 
-			if (i->second->state() != TerrainSlot::TSS_Destroy)
+			if (i->second->state() != OverhangTerrainSlot::TSS_Destroy)
 			{
 				clear(); // Repeat the process all over again
 				return;
@@ -650,7 +673,7 @@ namespace Ogre
 			_ptOrigin = pos;
 			for (TerrainSlotMap::iterator i = _slots.begin(); i != _slots.end(); ++i)
 			{
-				TerrainSlot* slot = i->second;
+				OverhangTerrainSlot* slot = i->second;
 				if (slot->instance)
 				{
 					slot->instance->setPosition(computeTerrainSlotPosition(slot->x, slot->y));
@@ -745,7 +768,7 @@ namespace Ogre
 				xSlot = static_cast< int16 > (ptSlot.x);
 				ySlot = static_cast< int16 > (ptSlot.y);	// TODO: Umm, I thought y was supposed to be flipped?
 
-				TerrainSlot * pSlot = getTerrainSlot(xSlot, ySlot);
+				OverhangTerrainSlot * pSlot = getTerrainSlot(xSlot, ySlot);
 
 				if (
 					pSlot == NULL || pSlot->instance == NULL 
@@ -774,7 +797,7 @@ namespace Ogre
 	{
 		for (MetaBallWorkRequest::SlotList::iterator i = iBegin; i != iEnd; ++i)
 		{
-			TerrainSlot * pSlot = *i;
+			OverhangTerrainSlot * pSlot = *i;
 			OHT_DBGTRACE("\tPage, " << pSlot->position);
 			pSlot->instance->addMetaBall(position - pSlot->position, radius, excavating);
 		}
@@ -785,7 +808,7 @@ namespace Ogre
 		oht_assert_threadmodel(ThrMdl_Main);
 		while (iBegin != iEnd)
 		{
-			TerrainSlot * pSlot = *iBegin++;
+			OverhangTerrainSlot * pSlot = *iBegin++;
 			pSlot->instance->commitOperation();
 			pSlot->doneMutating();
 		}
@@ -819,7 +842,7 @@ namespace Ogre
 			fPageOffset = options.getPageWorldSize() / 2.0f;
 
 		int16 py, px;
-		TerrainSlot * pSlot0 = NULL, * pSlot;
+		OverhangTerrainSlot * pSlot0 = NULL, * pSlot;
 
 		toSlotPosition(ray.getOrigin(), px, py);
 		pSlot0 = NULL;
@@ -902,7 +925,7 @@ namespace Ogre
 		y = static_cast< int16 > (ptSlot.y);
 
 #ifdef _DEBUG
-		TerrainSlot * pSlot = getTerrainSlot(x, y);
+		OverhangTerrainSlot * pSlot = getTerrainSlot(x, y);
 		if (pSlot != NULL && pSlot->instance != NULL && pSlot->canRead())
 		{
 			const Vector3
@@ -923,7 +946,7 @@ namespace Ogre
 		return _pPagedWorld->calculatePageID(x, y);
 	}
 
-	void OverhangTerrainGroup::fillNeighbors( TerrainSlot ** vpSlots, const TerrainSlot * pSlot )
+	void OverhangTerrainGroup::fillNeighbors( OverhangTerrainSlot ** vpSlots, const OverhangTerrainSlot * pSlot )
 	{
 		vpSlots[VonN_NORTH] = getTerrainSlot(pSlot->x,			pSlot->y - _pyi);
 		vpSlots[VonN_WEST] = getTerrainSlot	(pSlot->x - _pxi,	pSlot->y);
@@ -931,15 +954,15 @@ namespace Ogre
 		vpSlots[VonN_EAST] = getTerrainSlot	(pSlot->x + _pxi,	pSlot->y);
 	}
 
-	bool OverhangTerrainGroup::tryLockNeighborhood( const TerrainSlot * slot )
+	bool OverhangTerrainGroup::tryLockNeighborhood( const OverhangTerrainSlot * slot )
 	{
-		TerrainSlot * vpSlotNeighbor[CountVonNeumannNeighbors];
+		OverhangTerrainSlot * vpSlotNeighbor[CountVonNeumannNeighbors];
 		fillNeighbors(vpSlotNeighbor, slot);
 
 		bool bCanLockVonNeumannNeighborhood = true;
 		for (unsigned c = 0; c < CountVonNeumannNeighbors; ++c)
 		{
-			TerrainSlot * pSlotNeighbor = vpSlotNeighbor[c];
+			OverhangTerrainSlot * pSlotNeighbor = vpSlotNeighbor[c];
 			if (pSlotNeighbor != NULL)
 				bCanLockVonNeumannNeighborhood = bCanLockVonNeumannNeighborhood && pSlotNeighbor->canNeighborQuery(Neighborhood::opposite((VonNeumannNeighbor)c));
 			}
@@ -947,7 +970,7 @@ namespace Ogre
 		{
 			for (unsigned c = 0; c < CountVonNeumannNeighbors; ++c)
 			{
-				TerrainSlot * pSlotNeighbor = vpSlotNeighbor[c];
+				OverhangTerrainSlot * pSlotNeighbor = vpSlotNeighbor[c];
 				if (pSlotNeighbor != NULL)
 					pSlotNeighbor->setNeighborQuery(Neighborhood::opposite((VonNeumannNeighbor)c));
 			}
@@ -955,21 +978,21 @@ namespace Ogre
 		return bCanLockVonNeumannNeighborhood;
 	}
 
-	void OverhangTerrainGroup::unlockNeighborhood( const TerrainSlot* slot )
+	void OverhangTerrainGroup::unlockNeighborhood( const OverhangTerrainSlot* slot )
 	{
-		TerrainSlot * vpSlotNeighbor[CountVonNeumannNeighbors];
+		OverhangTerrainSlot * vpSlotNeighbor[CountVonNeumannNeighbors];
 		fillNeighbors(vpSlotNeighbor, slot);
 
 		for (unsigned c = 0; c < CountVonNeumannNeighbors; ++c)
 		{
-			TerrainSlot * pSlotNeighbor = vpSlotNeighbor[c];
+			OverhangTerrainSlot * pSlotNeighbor = vpSlotNeighbor[c];
 			VonNeumannNeighbor evnQuery = Neighborhood::opposite((VonNeumannNeighbor)c);
 			if (pSlotNeighbor != NULL && pSlotNeighbor->isNeighborQueried(evnQuery))
 				pSlotNeighbor->clearNeighborQuery(evnQuery);
 		}
 	}
 
-	void OverhangTerrainGroup::saveTerrainImpl( TerrainSlot * pSlot, const bool synchronous /*= false*/ )
+	void OverhangTerrainGroup::saveTerrainImpl( OverhangTerrainSlot * pSlot, const bool synchronous /*= false*/ )
 	{
 		WorkRequest req;
 		req.slot = pSlot;
@@ -980,248 +1003,29 @@ namespace Ogre
 		);
 	}
 
-	OverhangTerrainGroup::TerrainSlot::TerrainSlot( const int16 x, const int16 y ) 
-	: x(x), y(y), instance (NULL), data(NULL), _enState0(TSS_Empty), _enState(TSS_Empty), queryNeighbors(0), queryCount(0)
+	WorkQueue::RequestID OverhangTerrainGroup::generateSurfaceConfiguration( MetaFragment::Container * pMF, const IsoSurfaceRenderable * pISR, const unsigned nLOD, const Touch3DFlags enStitches )
 	{
+		oht_assert_threadmodel(ThrMdl_Main);
+		SurfaceGenRequest reqdata;
 
+		reqdata.mf = pMF;
+		const Voxel::MetaVoxelFactory * pFactory = pMF->factory;
+		reqdata.shadow = pISR->getShadow();
+		reqdata.channel = pFactory->channel;
+		reqdata.lod = nLOD;
+		reqdata.surfaceFlags = pFactory->surfaceFlags;
+		reqdata.stitches = enStitches;
+		reqdata.vertexBufferCapacity = pISR->getVertexBufferCapacity(nLOD);
+
+		return 
+			Root::getSingleton().getWorkQueue()->addRequest(
+			_nWorkQChannel, static_cast <uint16> (BuildSurface), 
+			Any(reqdata), 0, false);
 	}
 
-	void OverhangTerrainGroup::TerrainSlot::freeLoadData()
+	void OverhangTerrainGroup::cancelRequest( const WorkQueue::RequestID rid )
 	{
-		delete data;
-		data = NULL;
-	}
-
-	OverhangTerrainGroup::TerrainSlot::~TerrainSlot()
-	{
-		delete data; 
-		delete instance;
-	}
-
-	void OverhangTerrainGroup::TerrainSlot::setNeighborQuery( const VonNeumannNeighbor evnNeighbor )
-	{
-		if (_enState != TSS_Neutral && _enState != TSS_Empty && (_enState != TSS_NeighborQuery || (queryNeighbors & Neighborhood::flag(evnNeighbor))))
-			throw StateEx("Cannot set query neighbor state, slot is busy");
-
-		if (!queryNeighbors)
-			_enState0 = _enState;
-		_enState = TSS_NeighborQuery;
-		queryNeighbors |= Neighborhood::flag(evnNeighbor);
-	}
-
-	void OverhangTerrainGroup::TerrainSlot::clearNeighborQuery(const VonNeumannNeighbor evnNeighbor)
-	{
-		if (_enState != TSS_NeighborQuery || !(queryNeighbors & Neighborhood::flag(evnNeighbor)))
-			throw StateEx("Cannot clear neighbor query state, wasn't previously set");
-
-		queryNeighbors ^= Neighborhood::flag(evnNeighbor);
-
-		if (!queryNeighbors)
-		{
-			_enState = _enState0;
-			if (_enState == TSS_Neutral || _enState == TSS_Empty)
-				processPendingTasks();
-		}
-	}
-
-	bool OverhangTerrainGroup::TerrainSlot::canNeighborQuery( const VonNeumannNeighbor evnNeighbor ) const
-	{
-		switch (_enState)
-		{
-		case TSS_Neutral:
-		case TSS_Empty:
-			return true;
-		case TSS_NeighborQuery:
-			return !(queryNeighbors & Neighborhood::flag(evnNeighbor));
-		default:
-			return false;
-		}
-	}
-
-	bool OverhangTerrainGroup::TerrainSlot::isNeighborQueried( const VonNeumannNeighbor evnNeighbor ) const
-	{
-		return _enState == TSS_NeighborQuery && (queryNeighbors & Neighborhood::flag(evnNeighbor));
-	}
-
-
-	void OverhangTerrainGroup::TerrainSlot::saving()
-	{
-		if (_enState != TSS_Neutral)
-			throw StateEx("State was not neutral or save-unload");
-
-		_enState0 = _enState;
-		_enState = TSS_Saving;
-	}
-
-	void OverhangTerrainGroup::TerrainSlot::doneSaving()
-	{
-		if (_enState != TSS_Saving)
-			throw StateEx("State was not saving");
-
-		_enState = _enState0;
-		if (_enState == TSS_Neutral || _enState == TSS_Empty)
-			processPendingTasks();
-	}
-
-	void OverhangTerrainGroup::TerrainSlot::saveUnload()
-	{
-		if (_enState != TSS_Neutral)
-			throw StateEx("State was not neutral");
-
-		_enState0 = TSS_Unloading;
-		_enState = TSS_Saving;
-	}
-
-	void OverhangTerrainGroup::TerrainSlot::mutating()
-	{
-		if (_enState != TSS_Neutral)
-			throw StateEx("State was not neutral");
-
-		_enState = TSS_Mutate;
-	}
-
-	void OverhangTerrainGroup::TerrainSlot::doneMutating()
-	{
-		if (_enState != TSS_Mutate)
-			throw StateEx("State was not mutating");
-
-		_enState = TSS_Neutral;
-		processPendingTasks();
-	}
-
-	void OverhangTerrainGroup::TerrainSlot::query()
-	{
-		if (_enState != TSS_Neutral && _enState != TSS_Query)
-			throw StateEx("State was not neutral or query");
-
-		queryCount++;
-		_enState = TSS_Query;
-	}
-
-	void OverhangTerrainGroup::TerrainSlot::doneQuery()
-	{
-		if (_enState != TSS_Query)
-			throw StateEx("State was not query");
-
-		if (--queryCount == 0)
-			_enState = TSS_Neutral;
-
-		processPendingTasks();
-	}
-
-	void OverhangTerrainGroup::TerrainSlot::loading()
-	{
-		if (_enState != TSS_Empty)
-			throw StateEx("State was not empty");
-
-		_enState = TSS_Loading;
-	}
-
-	void OverhangTerrainGroup::TerrainSlot::doneLoading()
-	{
-		if (_enState != TSS_Loading)
-			throw StateEx("State was not loading");
-
-		_enState = TSS_Neutral;
-		processPendingTasks();
-	}
-
-	void OverhangTerrainGroup::TerrainSlot::unloading()
-	{
-		if (_enState != TSS_Neutral)
-			throw StateEx("State was not neutral");
-
-		_enState = TSS_Unloading;
-	}
-
-	void OverhangTerrainGroup::TerrainSlot::doneUnloading()
-	{
-		if (_enState != TSS_Unloading)
-			throw StateEx("State was not unloading");
-
-		_enState = TSS_Empty;
-		processPendingTasks();
-	}
-
-	void OverhangTerrainGroup::TerrainSlot::destroy()
-	{
-		if (_enState != TSS_Neutral)
-			throw StateEx("State was not neutral");
-
-		_enState = TSS_Destroy;
-	}
-
-	void OverhangTerrainGroup::TerrainSlot::processPendingTasks()
-	{
-		while(!_qJoinTasks.empty())
-		{
-			JoinTask task = _qJoinTasks.front();
-			_qJoinTasks.pop();
-			switch (task.type)
-			{
-			case JoinTask::JTT_Destroy: 
-				delete instance;
-				instance = NULL;
-				destroy();
-				break;
-			case JoinTask::JTT_SetMaterial:
-				instance->setMaterial(task.channel, task.material);
-				break;
-			case JoinTask::JTT_SetQID:
-				instance->setRenderQueue(task.channel, task.qid);
-				break;
-			}
-		}
-	}
-
-	void OverhangTerrainGroup::TerrainSlot::setMaterial( const Channel::Ident channel, MaterialPtr pMaterial )
-	{
-		if (_enState == TSS_Neutral)
-			instance->setMaterial(channel, pMaterial);
-		else
-		{
-			JoinTask task;
-			task.type = JoinTask::JTT_SetMaterial;
-			task.material = pMaterial;
-			task.channel = channel;
-			_qJoinTasks.push(task);
-		}
-	}
-
-	void OverhangTerrainGroup::TerrainSlot::setRenderQueueGroup( const Channel::Ident channel, const int nQID )
-	{
-		if (_enState == TSS_Neutral)
-			instance->setRenderQueue(channel, nQID);
-		else
-		{
-			JoinTask task;
-			task.type = JoinTask::JTT_SetQID;
-			task.qid = nQID;
-			task.channel = channel;
-			_qJoinTasks.push(task);
-		}
-	}
-
-	void OverhangTerrainGroup::TerrainSlot::destroySlot()
-	{
-		if (_enState == TSS_Neutral || _enState == TSS_Empty)
-		{
-			delete instance;
-			instance = NULL;
-			destroy();
-		}
-		else
-		{
-			JoinTask task;
-			task.type = JoinTask::JTT_Destroy;
-			_qJoinTasks.push(task);
-		}
-	}
-
-	OverhangTerrainGroup::TerrainSlot::StateEx::StateEx( const char * szMsg ) 
-		: std::exception(szMsg) 
-	{
-		LogManager::getSingleton().stream(LML_CRITICAL) << szMsg;
+		Root::getSingleton().getWorkQueue()->abortRequest(rid);
 	}
 
 }

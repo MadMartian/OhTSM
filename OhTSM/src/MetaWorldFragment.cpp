@@ -39,6 +39,10 @@ http://www.gnu.org/copyleft/lesser.txt.
 #include "MetaFactory.h"
 #include "Util.h"
 #include "OverhangTerrainListener.h"
+#include "TerrainTile.h"
+#include "PageSection.h"
+#include "OverhangTerrainSlot.h"
+#include "OverhangTerrainGroup.h"
 
 namespace Ogre
 {
@@ -47,16 +51,21 @@ namespace Ogre
 
 	namespace MetaFragment 
 	{
-		Post::Post(Voxel::CubeDataRegion * pCubeDataRegoin, const YLevel & ylevel /*= YLevel()*/) 
-		: block(pCubeDataRegoin), ylevel(ylevel), surface(NULL), custom(NULL)
+		Post::Post(TerrainTile * pTile, Voxel::CubeDataRegion * pCubeDataRegoin, const YLevel & ylevel /*= YLevel()*/) 
+		: tile(pTile), block(pCubeDataRegoin), ylevel(ylevel), surface(NULL), custom(NULL)
 		{
 
 		}
 
-		Core::Core( RenderManager * pRendMan, const MetaVoxelFactory * pFactory, Voxel::CubeDataRegion * pBlock, const YLevel & ylevel )
+		void Post::configurationResponse()
+		{
+			this->tile->page->slot->doneQuery();
+		}
+
+		Core::Core( RenderManager * pRendMan, const MetaVoxelFactory * pFactory, TerrainTile * pTile, Voxel::CubeDataRegion * pBlock, const YLevel & ylevel )
 			:	_pRendMan(pRendMan),
 				_bResetting(false), _pSceneNode(NULL),
-				Post(pBlock, ylevel),
+				Post(pTile, pBlock, ylevel),
 
 			factory(pFactory),
 			_pMatInfo(NULL), _nLOD_Requested0(~0), _enStitches_Requested0((Touch3DFlags)~0), _ridBuilderLast(~0)
@@ -132,7 +141,7 @@ namespace Ogre
 			surface->deleteGeometry();
 			_bResetting = false;
 			if (_ridBuilderLast != ~0)
-				factory->base->getIsoSurfaceBuilder()->cancelBuild(_ridBuilderLast);
+				tile->page->slot->group->cancelRequest(_ridBuilderLast);
 
 			_ridBuilderLast = ~0;
 			_nLOD_Requested0 = ~0;
@@ -166,14 +175,15 @@ namespace Ogre
 		{
 			oht_assert_threadmodel(ThrMdl_Main);	// Main thread to re-use tracking vars
 			OgreAssert(surface != NULL, "Surface not initialized");
-			IsoSurfaceBuilder * pISB = factory->base->getIsoSurfaceBuilder();
 
 			if (_bResetting)
 			{
+				OverhangTerrainGroup * grp = this->tile->page->slot->group;
+
 				surface->deleteGeometry();
 				_bResetting = false;
 				if (_ridBuilderLast != ~0)
-					pISB->cancelBuild(_ridBuilderLast);
+					grp->cancelRequest(_ridBuilderLast);
 
 				_ridBuilderLast = ~0;
 				_nLOD_Requested0 = ~0;
@@ -189,17 +199,23 @@ namespace Ogre
 					surface->populateBuffers(lock.openQueue());
 					return true;
 				} else
-					if (_nLOD_Requested0 != nLOD || _enStitches_Requested0 != enStitches)	// IsoSurfaceBuilder is busy, no data available yet
-					{
-						if (_ridBuilderLast != ~0)
-							pISB->cancelBuild(_ridBuilderLast);
+				if (
+					this->tile->page->slot->canRead() &&		// Page is busy
+					(_nLOD_Requested0 != nLOD || _enStitches_Requested0 != enStitches)	// IsoSurfaceBuilder is busy, no data available yet
+				)
+				{
+					OverhangTerrainGroup * grp = this->tile->page->slot->group;
 
-						_ridBuilderLast = pISB->requestBuild(block, surface, nLOD, enStitches);
-						_nLOD_Requested0 = nLOD;
-						_enStitches_Requested0 = enStitches;
-					}
+					this->tile->page->slot->query();
+					if (_ridBuilderLast != ~0)
+						grp->cancelRequest(_ridBuilderLast);
 
-					return false;
+					_ridBuilderLast = grp->generateSurfaceConfiguration(static_cast< MetaFragment::Container * > (this), surface, nLOD, enStitches);
+					_nLOD_Requested0 = nLOD;
+					_enStitches_Requested0 = enStitches;
+				}
+
+				return false;
 			} else
 				return true;
 		}
@@ -521,8 +537,8 @@ namespace Ogre
 		}
 
 
-		Container::Container(RenderManager * pRendMan, const Voxel::MetaVoxelFactory * pFact, Voxel::CubeDataRegion * pDG, const YLevel yl /*= YLevel()*/)
-			: 	Core(pRendMan, pFact, pDG, yl), factory(pFact)
+		Container::Container(RenderManager * pRendMan, const Voxel::MetaVoxelFactory * pFact, TerrainTile * pTile, Voxel::CubeDataRegion * pDG, const YLevel yl /*= YLevel()*/)
+			: 	Core(pRendMan, pFact, pTile, pDG, yl), factory(pFact)
 
 		{
 		}

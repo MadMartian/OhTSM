@@ -64,7 +64,7 @@ namespace Ogre
 		a multi-resolution stitching algorithm provided by Transvoxel.
 		NOTE: This algorithm makes references to illustrations in Eric Lengyel's 2010 dissertation
 	*/
-	class IsoSurfaceBuilder : public WorkQueue::RequestHandler, public WorkQueue::ResponseHandler
+	class IsoSurfaceBuilder
 	{
 	public:
 		/** Channel-specific properties that apply to the kind of surface that the builder is currently working-on */
@@ -160,19 +160,6 @@ namespace Ogre
 			const Touch3DFlags enTouchFlags
 		);
 
-		/// Cancel a queued IsoSurface build request
-		void cancelBuild(const WorkQueue::RequestID & rid);
-
-		/** Builds an isosurface concurrently
-		@remarks Leverages WorkQueue to concurrently extract an isosurface from a voxel cube region and updates the specified surface in the main thread when finished
-		@param pCube The voxel cube data to extract the surface from
-		@param pISR The renderable that will be updated with the extracted surface in the main thread
-		@param nLOD The LOD of the surface to build
-		@param enStitches Indicates what sides to generate transition cells for
-		@returns The request ID of the backgrounded task
-		*/
-		WorkQueue::RequestID requestBuild(const Voxel::CubeDataRegion * pCube, IsoSurfaceRenderable * pISR, const unsigned nLOD, const Touch3DFlags enStitches);
-
 		/** Builds an isosurface
 		@remarks Extracts an isosurface from a voxel cube region and updates the specified surface when finished
 		@param pCube The voxel cube data to extract the surface from
@@ -182,31 +169,26 @@ namespace Ogre
 		*/
 		void build (const Voxel::CubeDataRegion * pCube, IsoSurfaceRenderable * pISR, const unsigned nLOD, const Touch3DFlags enStitches);
 
+		/** Builds an isosurface and queues the data for later propagation to GPU
+		@remarks Extracts an isosurface from a voxel cube region and queues the data.  It is the caller's responsibility to manually propagate the data from the queue
+			to the GPU hardware.  This may only be called by the OverhangTerrainGroup.  
+		@param pMF The meta-fragment that contains the voxel cube data to extract the surface from, its life-cycle must persist for the concurrent extraction workflow here.
+		@param pShadow The hardware shadow of the corresponding renderable, hosts the queue for data that will be propagated to the GPU in the main thread
+		@param lod The LOD of the surface to build
+		@param nSurfaceFlags Flags used to tell the surface-builder what is awesome and hip, in other words I _used_ to know what this was for
+		@param enStitches Indicates what sides to generate transition cells for
+		@param nVertexBufferCapacity The current capacity of the GPU vertex buffer, used to determine if it must be resized post-surface-generation */
+		void queueBuild( 
+			const MetaFragment::Container * pMF, 
+			SharedPtr< HardwareShadow::HardwareIsoVertexShadow > pShadow, 
+			const Channel::Ident channel, 
+			const unsigned lod, 
+			const size_t nSurfaceFlags, 
+			const Touch3DFlags enStitches, 
+			const size_t nVertexBufferCapacity 
+		);
+
 	protected:
-		enum RequestType
-		{
-			RT_BuildSurface
-		};
-
-		uint16 _nWorkQChannID;
-
-		struct BuildSurfaceTaskData
-		{
-			const Voxel::CubeDataRegion * cubedata;
-			SharedPtr< HardwareShadow::HardwareIsoVertexShadow > shadow;
-			Channel::Ident channel;
-			unsigned lod;
-			size_t surfaceFlags;
-			Touch3DFlags stitches;
-			size_t vertexBufferCapacity;
-#if defined(_DEBUG) || defined(_OHT_LOG_TRACE)
-			DebugInfo debugs;
-#endif
-
-			_OverhangTerrainPluginExport friend std::ostream & operator << (std::ostream & o, const BuildSurfaceTaskData & r)
-				{ return o; }
-		};
-
 		/// The algorithm for extracting isosurfaces
 		void buildImpl(
 #if defined(_DEBUG) || defined(_OHT_LOG_TRACE)
@@ -1914,9 +1896,6 @@ namespace Ogre
 
 		friend Ogre::Log::Stream & operator << (Ogre::Log::Stream &, const GridCell &);
 		friend Ogre::Log::Stream & operator << (Ogre::Log::Stream &, const TransitionCell &);
-
-		virtual WorkQueue::Response* handleRequest( const WorkQueue::Request* req, const WorkQueue* srcQ );
-		virtual void handleResponse( const WorkQueue::Response* res, const WorkQueue* srcQ );
 	};
 
 	Ogre::Log::Stream & operator << (Ogre::Log::Stream & s, const IsoSurfaceBuilder::GridCell & gc);

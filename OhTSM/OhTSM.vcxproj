@@ -141,6 +141,7 @@
     <ClCompile Include="src\OverhangTerrainPaging.cpp" />
     <ClCompile Include="src\OverhangTerrainPlugin.cpp" />
     <ClCompile Include="src\OverhangTerrainSceneManager.cpp" />
+    <ClCompile Include="src\OverhangTerrainSlot.cpp" />
     <ClCompile Include="src\PageSection.cpp" />
     <ClCompile Include="src\pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
@@ -190,6 +191,7 @@
     <ClInclude Include="include\OverhangTerrainPlugin.h" />
     <ClInclude Include="include\OverhangTerrainPrerequisites.h" />
     <ClInclude Include="include\OverhangTerrainSceneManager.h" />
+    <ClInclude Include="include\OverhangTerrainSlot.h" />
     <ClInclude Include="include\PageSection.h" />
     <ClInclude Include="include\pch.h" />
     <ClInclude Include="include\RenderManager.h" />

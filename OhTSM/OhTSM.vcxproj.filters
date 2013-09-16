@@ -138,6 +138,9 @@
     <ClCompile Include="src\RenderManager.cpp">
       <Filter>Core Sources</Filter>
     </ClCompile>
+    <ClCompile Include="src\OverhangTerrainSlot.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\Util.h">
@@ -268,6 +271,9 @@
     </ClInclude>
     <ClInclude Include="include\RenderManager.h">
       <Filter>Core Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="include\OverhangTerrainSlot.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

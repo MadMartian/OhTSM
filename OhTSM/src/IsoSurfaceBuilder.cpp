@@ -207,11 +207,6 @@ namespace Ogre
 		oht_assert_threadmodel(ThrMdl_Main);
 
 		_pMainVtxElems = new MainVertexElements(cubemeta);
-
-		WorkQueue * pWorkQ = Root::getSingleton().getWorkQueue();
-		_nWorkQChannID = pWorkQ->getChannel("OhTSM/IsoSurfaceBuilder");
-		pWorkQ->addRequestHandler(_nWorkQChannID, this);
-		pWorkQ->addResponseHandler(_nWorkQChannID, this);
 	}
 
 	IsoSurfaceBuilder::ChannelParameters::TransitionCellTranslators * IsoSurfaceBuilder::ChannelParameters::createTransitionCellTranslators( const unsigned short nLODCount, const Real fTCWidthRatio )
@@ -277,57 +272,26 @@ namespace Ogre
 			(chanopts.voxelRegionFlags & VRF_TexCoords ? IsoVertexElements::GEN_TEX_COORDS : 0);
 	}
 
-	WorkQueue::Response* IsoSurfaceBuilder::handleRequest( const WorkQueue::Request* req, const WorkQueue* srcQ )
+	void IsoSurfaceBuilder::queueBuild( const MetaFragment::Container * pMF, SharedPtr< HardwareShadow::HardwareIsoVertexShadow > pShadow, const Channel::Ident channel, const unsigned lod, const size_t nSurfaceFlags, const Touch3DFlags enStitches, const size_t nVertexBufferCapacity )
 	{
-		switch (req->getType())
-		{
-		case RT_BuildSurface:
-			{ OGRE_LOCK_MUTEX(mMutex);
-				oht_assert_threadmodel(ThrMdl_Background);
+		oht_assert_threadmodel(ThrMdl_Background);
 
-				BuildSurfaceTaskData reqdata = any_cast< BuildSurfaceTaskData > (req->getData());
-				HardwareIsoVertexShadow::ProducerQueueAccess queue = reqdata.shadow->requestProducerQueue(reqdata.lod, reqdata.stitches);
+		HardwareIsoVertexShadow::ProducerQueueAccess queue = pShadow->requestProducerQueue(lod, enStitches);
+				
+		auto fragment = pMF->acquire< MetaFragment::Interfaces::const_Basic >();
 
-				buildImpl(
 #if defined(_DEBUG) || defined(_OHT_LOG_TRACE)
-					reqdata.debugs,
-#endif // _DEBUG
-					reqdata.channel,
-					queue.resolution, reqdata.cubedata, reqdata.shadow, reqdata.surfaceFlags, reqdata.stitches, reqdata.vertexBufferCapacity
-				);
-				fillShadowQueues(queue, reqdata.cubedata->getGridScale());
-			}
-			break;
-		}
+		DebugInfo debugs = DebugInfo(fragment.surface);
+#endif
 
-		return new WorkQueue::Response(req, true, Any());
-	}
-
-	void IsoSurfaceBuilder::handleResponse( const WorkQueue::Response* res, const WorkQueue* srcQ ) 
-	{
-	}
-
-	WorkQueue::RequestID IsoSurfaceBuilder::requestBuild( const Voxel::CubeDataRegion * pDataGrid, IsoSurfaceRenderable * pISR, const unsigned nLOD, const Touch3DFlags enStitches )
-	{
-		oht_assert_threadmodel(ThrMdl_Main);
-		BuildSurfaceTaskData reqdata;
-
-		reqdata.cubedata = pDataGrid;
+		buildImpl(
 #if defined(_DEBUG) || defined(_OHT_LOG_TRACE)
-		reqdata.debugs = DebugInfo(pISR);
+			debugs,
 #endif // _DEBUG
-		reqdata.shadow = pISR->getShadow();
-		reqdata.channel = pISR->getMetaWorldFragment() ->factory->channel;
-		reqdata.lod = nLOD;
-		reqdata.surfaceFlags = pISR->getMetaWorldFragment() ->factory->surfaceFlags;
-		reqdata.stitches = enStitches;
-		reqdata.vertexBufferCapacity = pISR->getVertexBufferCapacity(nLOD);
-		return Root::getSingleton().getWorkQueue()->addRequest(_nWorkQChannID, RT_BuildSurface, Any(reqdata));
-	}
-
-	void IsoSurfaceBuilder::cancelBuild( const WorkQueue::RequestID & rid )
-	{
-		Root::getSingleton().getWorkQueue()->abortRequest(rid);
+			channel,
+			queue.resolution, fragment.block, pShadow, nSurfaceFlags, enStitches, nVertexBufferCapacity
+		);
+		fillShadowQueues(queue, fragment.block->getGridScale());
 	}
 
 	void IsoSurfaceBuilder::build( const Voxel::CubeDataRegion * pDataGrid, IsoSurfaceRenderable * pISR, const unsigned nLOD, const Touch3DFlags enStitches )

@@ -182,13 +182,16 @@ namespace Ogre {
 	public:
 		/// The overhang-terrain manager singleton
 		const OverhangTerrainManager * const manager;
+		/// The terrain slot hosting this object
+		OverhangTerrainSlot * const slot;
 
 		/**
 		@param mgr The overhang-terrain manager singleton
+		@param pSlot The terrain slot within which this page section resides (one-to-one relationship)
 		@param pMetaFactory The object factory singleton
 		@param descchann The channel descriptor
 		*/
-		PageSection(const OverhangTerrainManager * mgr, MetaBaseFactory * const pMetaFactory, const Channel::Descriptor & descchann);
+		PageSection(const OverhangTerrainManager * mgr, OverhangTerrainSlot * pSlot, MetaBaseFactory * const pMetaFactory, const Channel::Descriptor & descchann);
 		virtual ~PageSection();
 
 		/// Initializes all terrain tiles with the specified initialization parameters

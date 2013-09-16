@@ -78,8 +78,12 @@ namespace Ogre
 			Voxel::CubeDataRegion * const block;
 			/// Y-level of the fragment
 			YLevel ylevel;
+			/// The owning terrain tile
+			TerrainTile * const tile;
 
-			Post(Voxel::CubeDataRegion * pCubeDataRegoin, const YLevel & ylevel = YLevel());
+			Post(TerrainTile * pTile, Voxel::CubeDataRegion * pCubeDataRegoin, const YLevel & ylevel = YLevel());
+
+			void configurationResponse();
 		};
 
 		/// Facet of a meta fragment that contains most members
@@ -121,10 +125,11 @@ namespace Ogre
 			/**
 			@param pRendMan The render manager used to synchronize iso-surface rendering
 			@param pFactory The meta factory singleton for creating various new objects of the associated channel
+			@param pTile The owning terrain tile of the meta fragment
 			@param pBlock The 3D voxel grid bound to the meta fragment
 			@param ylevel the Y-level of the meta fragment
 			*/
-			Core(RenderManager * pRendMan, const Voxel::MetaVoxelFactory * pFactory, Voxel::CubeDataRegion * pBlock, const YLevel & ylevel);
+			Core(RenderManager * pRendMan, const Voxel::MetaVoxelFactory * pFactory, TerrainTile * pTile, Voxel::CubeDataRegion * pBlock, const YLevel & ylevel);
 			virtual ~Core();
 
 		public: // Simple accessors
@@ -530,7 +535,7 @@ namespace Ogre
 			const Voxel::MetaVoxelFactory * const factory;
 
 			/// Creates new MetaFragment, as well as IsoSuface and grid as needed.
-			Container(RenderManager * pRendMan, const Voxel::MetaVoxelFactory * pFact, Voxel::CubeDataRegion * pDG, const YLevel yl = YLevel());
+			Container(RenderManager * pRendMan, const Voxel::MetaVoxelFactory * pFact, TerrainTile * pTile, Voxel::CubeDataRegion * pDG, const YLevel yl = YLevel());
 			virtual ~Container();
 
 			template< typename INTERFACE >

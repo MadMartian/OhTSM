@@ -52,9 +52,9 @@ namespace Ogre
 	const uint16 PageSection::VERSION = 1;
 
 	//-------------------------------------------------------------------------
-	PageSection::PageSection(const OverhangTerrainManager * mgr, MetaBaseFactory * const pMetaFactory, const Channel::Descriptor & descchann)
+	PageSection::PageSection(const OverhangTerrainManager * mgr, OverhangTerrainSlot * pSlot, MetaBaseFactory * const pMetaFactory, const Channel::Descriptor & descchann)
 		: manager(mgr), _nTileCount(mgr->options.getTilesPerPage()), _pFactory(pMetaFactory),
-		 _descchann(descchann), _vvListeners(descchann),
+		 _descchann(descchann), _vvListeners(descchann), slot(pSlot),
 		 _pScNode(NULL), _bDirty(false), _pPrivate(NULL), _pMetaHeightmap(NULL)
 	{
 		oht_assert_threadmodel(ThrMdl_Main);

@@ -36,6 +36,12 @@ namespace Ogre
 {
 	namespace RLE
 	{
+		class BufferOverflowEx : public std::exception
+		{
+		public:
+			BufferOverflowEx(const char * szMsg);
+		};
+
 		/** Provides and stores run-length encoded compressed data
 		@remarks The class is called "Channel" due to practical use.  In the case of some
 		aggregate data-types posessing multiple components (such as an RGBA colour) it makes
