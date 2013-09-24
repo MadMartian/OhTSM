@@ -170,10 +170,11 @@ namespace Ogre
 		{
 			oht_assert_threadmodel(ThrMdl_Main);	// Main thread to re-use tracking vars
 			OgreAssert(surface != NULL, "Surface not initialized");
+			Container * self = static_cast< Container * > (this);
 
 			if (_bResetting)
 			{
-				OverhangTerrainGroup * grp = static_cast< Container * > (this) ->tile->page->slot->group;
+				OverhangTerrainGroup * grp = self->tile->page->slot->group;
 
 				surface->deleteGeometry();
 				_bResetting = false;
@@ -194,20 +195,20 @@ namespace Ogre
 					surface->populateBuffers(lock.openQueue());
 					return true;
 				} else
-				if (
-					static_cast< Container * > (this) ->tile->page->slot->canRead() &&		// Page is busy
-					(_nLOD_Requested0 != nLOD || _enStitches_Requested0 != enStitches)	// IsoSurfaceBuilder is busy, no data available yet
-				)
+				if (_nLOD_Requested0 != nLOD || _enStitches_Requested0 != enStitches)	// IsoSurfaceBuilder is busy, no data available yet
 				{
-					OverhangTerrainGroup * grp = static_cast< Container * > (this) ->tile->page->slot->group;
+					OverhangTerrainGroup * grp = self->tile->page->slot->group;
+					const WorkQueue::RequestID rid = grp->generateSurfaceConfiguration(self, surface, nLOD, enStitches);
 
-					static_cast< Container * > (this) ->tile->page->slot->query();
-					if (_ridBuilderLast != ~0)
-						grp->cancelRequest(_ridBuilderLast);
+					if (rid)
+					{
+						if (_ridBuilderLast != ~0)
+							grp->cancelRequest(_ridBuilderLast);
 
-					_ridBuilderLast = grp->generateSurfaceConfiguration(static_cast< Container * > (this), surface, nLOD, enStitches);
-					_nLOD_Requested0 = nLOD;
-					_enStitches_Requested0 = enStitches;
+						_ridBuilderLast = rid;
+						_nLOD_Requested0 = nLOD;
+						_enStitches_Requested0 = enStitches;
+					}
 				}
 
 				return false;

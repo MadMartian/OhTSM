@@ -207,11 +207,6 @@ namespace Ogre
 			preparePage(slot->instance, slot->data);
 		}
 
-		slot->freeLoadData();
-
-		unlockNeighborhood(slot);
-		slot->doneLoading();
-
 		if (slot->instance != NULL)
 		{
 			getSceneManager()->attachPage(slot->instance);
@@ -342,11 +337,12 @@ namespace Ogre
 			break;
 		}
 		
-		// only deal with own requests
-		if (pOrigin != this)
-			return false;
-		else
-			return RequestHandler::canHandleRequest(req, srcQ);
+		bool bResult = pOrigin == this && RequestHandler::canHandleRequest(req, srcQ);
+
+		if (!bResult)
+			handleAbort(req, srcQ);
+
+		return bResult;
 	}
 
 	WorkQueue::Response* OverhangTerrainGroup::handleRequest( const WorkQueue::Request* req, const WorkQueue* srcQ )
@@ -441,10 +437,7 @@ namespace Ogre
 		}
 
 		// only deal with own requests
-		if (pOrigin != this)
-			return false;
-		else
-			return ResponseHandler::canHandleResponse(res, srcQ);
+		return pOrigin == this;
 	}
 
 	void OverhangTerrainGroup::handleResponse( const WorkQueue::Response* res, const WorkQueue* srcQ )
@@ -460,7 +453,7 @@ namespace Ogre
 					LogManager::getSingleton().stream(LML_CRITICAL) <<
 					"We failed to prepare the terrain at (" << lreq.slot->x << ", " <<
 					lreq.slot->y <<") with the error '" << res->getMessages() << "'";
-				lreq.slot->freeLoadData();
+				defineTerrain_dispose(lreq.slot);
 			}
 			break;
 		case UnloadPage:
@@ -505,6 +498,54 @@ namespace Ogre
 			break;
 		case DestroyAll:
 			clear_response();
+			break;
+		}
+	}
+
+	void OverhangTerrainGroup::cancelRequest( const WorkQueue::RequestID rid )
+	{
+		Root::getSingleton().getWorkQueue()->abortRequest(rid);
+	}
+
+	void OverhangTerrainGroup::handleAbort( const WorkQueue::Request * req, const WorkQueue * srcQ )
+	{
+		switch (req->getType())
+		{
+		case UnloadPage:
+			throw AbortEx();
+
+		case LoadPage:
+			{
+				WorkRequest lreq = any_cast<WorkRequest>(req->getData());
+				defineTerrain_dispose(lreq.slot);
+			}
+			break;
+
+		case SavePage:
+			{
+				WorkRequest lreq = any_cast<WorkRequest>(req->getData());
+				lreq.slot->doneSaving();
+
+				if (lreq.slot->state() == OverhangTerrainSlot::TSS_Unloading)
+					lreq.slot->doneUnloading();
+			}
+			break;
+
+		case AddMetaObject:
+			{
+				MetaBallWorkRequest lreq = any_cast<MetaBallWorkRequest>(req->getData());
+				for (MetaBallWorkRequest::SlotList::iterator i = lreq.slots.begin(); i != lreq.slots.end(); ++i)
+				{
+					(*i)->doneMutating();
+				}
+			}
+			break;
+
+		case BuildSurface:
+			{
+				SurfaceGenRequest lreq = any_cast<SurfaceGenRequest>(req->getData());
+				lreq.slot->doneQuery();
+			}
 			break;
 		}
 	}
@@ -1012,24 +1053,34 @@ namespace Ogre
 
 		reqdata.origin = this;
 		reqdata.slot = pMF->tile->page->slot;
-		reqdata.mf = pMF;
-		const Voxel::MetaVoxelFactory * pFactory = pMF->factory;
-		reqdata.shadow = pISR->getShadow();
-		reqdata.channel = pFactory->channel;
-		reqdata.lod = nLOD;
-		reqdata.surfaceFlags = pFactory->surfaceFlags;
-		reqdata.stitches = enStitches;
-		reqdata.vertexBufferCapacity = pISR->getVertexBufferCapacity(nLOD);
 
-		return 
-			Root::getSingleton().getWorkQueue()->addRequest(
-			_nWorkQChannel, static_cast <uint16> (BuildSurface), 
-			Any(reqdata), 0, false);
+		if (reqdata.slot->canRead())
+		{
+			reqdata.slot->query();
+
+			reqdata.mf = pMF;
+			const Voxel::MetaVoxelFactory * pFactory = pMF->factory;
+			reqdata.shadow = pISR->getShadow();
+			reqdata.channel = pFactory->channel;
+			reqdata.lod = nLOD;
+			reqdata.surfaceFlags = pFactory->surfaceFlags;
+			reqdata.stitches = enStitches;
+			reqdata.vertexBufferCapacity = pISR->getVertexBufferCapacity(nLOD);
+
+			return 
+				Root::getSingleton().getWorkQueue()->addRequest(
+				_nWorkQChannel, static_cast <uint16> (BuildSurface), 
+				Any(reqdata), 0, false);
+		} else
+			return 0;
 	}
 
-	void OverhangTerrainGroup::cancelRequest( const WorkQueue::RequestID rid )
+	void OverhangTerrainGroup::defineTerrain_dispose( OverhangTerrainSlot* slot )
 	{
-		Root::getSingleton().getWorkQueue()->abortRequest(rid);
+		slot->freeLoadData();
+
+		unlockNeighborhood(slot);
+		slot->doneLoading();
 	}
 
 }

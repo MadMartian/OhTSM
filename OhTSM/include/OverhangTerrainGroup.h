@@ -53,6 +53,9 @@ namespace Ogre
 	public:
 		typedef std::map< uint32, OverhangTerrainSlot * > TerrainSlotMap;
 
+		/// Thrown when a background request of a type that cannot be aborted was aborted anyway
+		class AbortEx : public std::exception {};
+
 		/**
 		@param sm Pointer to the scene manager used to obtain the main top-level configuration options (among other things)
 		@param pManRsrcLoader Pointer to a manual resource loader used to construct the meta-factory
@@ -171,6 +174,12 @@ namespace Ogre
 
 		virtual bool canHandleResponse( const WorkQueue::Response* res, const WorkQueue* srcQ );
 		virtual void handleResponse( const WorkQueue::Response* res, const WorkQueue* srcQ );
+
+		/** Called whenever a request is aborted and received before dispatch.  
+			If a request does not exist or was aborted after dispatch, then this method is never called for the request.
+		@param req The originating request object of the request being aborted
+		@param srcQ The request queue handling the request */
+		void handleAbort( const WorkQueue::Request * req, const WorkQueue * srcQ );
 
 		inline String getResourceGroupName() const { return _sResourceGroup; }
 
@@ -353,6 +362,8 @@ namespace Ogre
 		bool defineTerrain_worker( OverhangTerrainSlot * slot );
 		/// Final steps in defining / loading a terrain slot
 		void defineTerrain_response( OverhangTerrainSlot* slot );
+		/// Dipose operations for defining / loading a terrain, called after response or when aborted
+		void defineTerrain_dispose( OverhangTerrainSlot* slot );
 
 		/// Worker tasks for unloading a terrain slot
 		void unloadTerrain_worker( OverhangTerrainSlot * slot, UnloadPageResponseData & respdata );
