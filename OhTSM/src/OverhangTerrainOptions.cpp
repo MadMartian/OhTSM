@@ -39,7 +39,7 @@ namespace Ogre
 			pOpts->normals = static_cast< NormalsType > (cEnumTemp);
 			stream.read(&pOpts->transitionCellWidthRatio);
 			stream.read(&cEnumTemp);
-			pOpts->voxelRegionFlags = static_cast< OverhangTerrainVoxelRegionFlags > (cEnumTemp);
+			pOpts->voxelRegionFlags = cEnumTemp;
 			stream.read(&pOpts->maxGeoMipMapLevel);
 			stream.read(&pOpts->maxPixelError);
 
