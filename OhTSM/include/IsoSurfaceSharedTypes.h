@@ -137,9 +137,17 @@ namespace Ogre
 			unsigned char x, y;
 			unsigned short d;
 		} x, y, z;
+
+		inline const XYD & operator [] (const unsigned idx) const { return reinterpret_cast< const XYD * > (this) [idx]; }
 	};
 	/// Maps transition cell coordinates to 3D coordinates compatible with GridCell
 	const extern Matrix3x21 Mat2D3D[CountOrthogonalNeighbors];
+
+	/// Maps an orthogonal neighbor to a 3D vector coordinate index
+	const extern unsigned OrthogonalNeighbor_to_ComponentIndex[CountOrthogonalNeighbors];
+
+	/// Maps 3D vector coordinate index to the associated orthogonal neighbors
+	const extern unsigned ComponentIndex_to_OrthogonalNeighbor[3][2];
 
 	struct Simplex2xSimplex3
 	{

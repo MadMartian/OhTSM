@@ -223,34 +223,12 @@ namespace Ogre
 
 		void DataAccessor::updateGradient()
 		{
-			const int 
-				zN = _dgtmpl.dimensions,
-				yN = zN,
-				xN = yN;
-
-			for (int z = 0; z <= zN; ++z)
-				for (int x = 0; x <= xN; ++x)
-					for (int y = 0; y <= yN; ++y)
-						gradients.dx[_dgtmpl.getGridPointIndex(x, y, z)] = 
-							(Voxel::GradientField::PublicPrimitive)voxels(x + 1, y, z) 
-							- 
-							(Voxel::GradientField::PublicPrimitive)voxels(x - 1, y, z);
-
-			for (int z = 0; z <= zN; ++z)
-				for (int x = 0; x <= xN; ++x)
-					for (int y = 0; y <= yN; ++y)
-						gradients.dy[_dgtmpl.getGridPointIndex(x, y, z)] = 
-							(Voxel::GradientField::PublicPrimitive)voxels(x, y + 1, z) 
-							- 
-							(Voxel::GradientField::PublicPrimitive)voxels(x, y - 1, z);
-
-			for (int z = 0; z <= zN; ++z)
-				for (int x = 0; x <= xN; ++x)
-					for (int y = 0; y <= yN; ++y)
-						gradients.dz[_dgtmpl.getGridPointIndex(x, y, z)] = 
-							(Voxel::GradientField::PublicPrimitive)voxels(x, y, z + 1) 
-							- 
-							(Voxel::GradientField::PublicPrimitive)voxels(x, y, z - 1);
+			for (FieldAccessor::gradient_iterator i = voxels.iterate_gradient(0); i; ++i)
+				gradients.dx[i.index()] = i->left - i->right;
+			for (FieldAccessor::gradient_iterator i = voxels.iterate_gradient(1); i; ++i)
+				gradients.dy[i.index()] = i->left - i->right;
+			for (FieldAccessor::gradient_iterator i = voxels.iterate_gradient(2); i; ++i)
+				gradients.dz[i.index()] = i->left - i->right;
 		}
 	
 		void DataAccessor::reset()

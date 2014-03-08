@@ -80,4 +80,20 @@ namespace Ogre
 		{ 0, 2 }		// Below
 	};
 
+	const unsigned OrthogonalNeighbor_to_ComponentIndex[CountOrthogonalNeighbors] = 
+	{
+		2,		// North
+		0,		// East
+		0,		// West
+		2,		// South
+		1,		// Above
+		1		// Below
+	};
+
+	const unsigned ComponentIndex_to_OrthogonalNeighbor[3][2] = 
+	{
+		{ OrthoN_EAST, OrthoN_WEST },
+		{ OrthoN_ABOVE, OrthoN_BELOW },
+		{ OrthoN_NORTH, OrthoN_SOUTH }
+	};
 }

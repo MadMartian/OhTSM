@@ -70,6 +70,76 @@ namespace Ogre
 					: CellCoords(i, j, k) {}
 			};
 
+		protected:
+			class StripeLogic
+			{
+			protected:
+				const signed short _dim, _dim1;
+
+			public:
+				unsigned char s0, s1;	// 3D component index of local horizontal and vertical
+				signed short x0, y0, xN, yN;
+				size_t advanceY;
+				unsigned index;
+
+				StripeLogic(const CubeDataRegionDescriptor & dgtmpl);
+
+				virtual void init (const unsigned stripe, const Coords & c0, const Coords & cN, Coords & start);
+			};
+
+			class StripeLogicExt : public StripeLogic
+			{
+			private:
+				signed short _dimx[3];
+
+			public:
+				struct {
+					signed int advance4U, advance4V;	// Indicates the advance for the 3D block portion of the cube per 2D u/v coordinate step
+					unsigned index; // Associated starting index into 3D block
+				} block;
+				unsigned char s2;	// 3D component index whose axis is orthogonal to the stripe plane
+
+				StripeLogicExt(const CubeDataRegionDescriptor & dgtmpl);
+
+				void init (const unsigned stripe, const Coords & c0, const Coords & cN, Coords & start);
+
+				inline const signed short dimx(const unsigned component) const { return _dimx[component]; }
+			};
+
+			class BlockLogic
+			{
+			protected:
+				const signed short _dim, _dim1;
+
+				virtual void clamp( const Coords &c0, const Coords &cN );
+
+			public:
+				signed short x0, y0, z0, xN, yN, zN;
+				size_t advanceY, advanceZ;
+				unsigned index;
+
+				BlockLogic(const CubeDataRegionDescriptor & dgtmpl);
+
+				virtual void init (const Coords & c0, const Coords & cN);
+			};
+
+			class BlockLogicFeathered : public BlockLogic
+			{
+			private:
+				struct
+				{
+					signed short min, max;
+				} _feathers[3];
+
+			protected:
+				void clamp( const Coords &c0, const Coords &cN );
+
+			public:
+				BlockLogicFeathered(const CubeDataRegionDescriptor & dgtmpl, const short feather, const unsigned component);
+			};
+
+		public:
+
 			class iterator : public std::iterator< std::input_iterator_tag, FieldStrength >
 			{
 			private:
@@ -80,21 +150,12 @@ namespace Ogre
 					* _curr;
 
 				unsigned _stripe, _index;
-				signed short _dim;
+				signed short _dim1;
 				
-				struct StripeStuff 
-				{
-					unsigned char s0, s1;
-					signed short x0, y0, xN, yN;
-					size_t advanceY;
-				} _stripestuff;
-				struct VoxelStuff
-				{
-					signed short x0, y0, z0, xN, yN, zN;
-					size_t advanceY, advanceZ;
-				} _blockstuff;
+				StripeLogic _stripestuff;
+				BlockLogic _blockstuff;
 				Coords _coords;
-				const Coords _c0, _cN;
+				const Coords _c0, _cN;	// Bounded range of iteration area
 				const Touch3DFlags _t3df;
 				bool _term;
 
@@ -107,9 +168,6 @@ namespace Ogre
 				OHT_CR_CONTEXT;
 
 				void process ();
-
-				void initBlockWalk();
-				void initStripeWalk();
 
 			public:
 				iterator (const iterator & copy);
@@ -149,6 +207,78 @@ namespace Ogre
 				}
 			};
 
+			struct FieldDifference
+			{
+				FieldStrength left, right;
+			};
+
+			class gradient_iterator : public std::iterator< std::input_iterator_tag, FieldDifference >
+			{
+			private:
+				const CubeDataRegionDescriptor & _dgtmpl;
+				FieldStrength 
+					* const * const _stripes, 
+					* const _values,
+					* _pBlockVal, * _pStripeVal;
+				FieldDifference _curr;
+
+				unsigned _leftright, _stripe, _lidx, _ridx, _sidx, _vidx, _index;
+				signed int _cf[3];
+				signed short _dim1, _dimc;
+				StripeLogicExt _stripestuff;
+				BlockLogicFeathered _blockstuff;
+				Coords _coords;
+				const Coords _c0, _cN;	// Bounded range of iteration area
+				const Touch3DFlags _t3df;
+
+				bool _term;
+
+				enum CRState
+				{
+					CRS_Stripe = 1,
+					CRS_Values = 2
+				};
+
+				OHT_CR_CONTEXT;
+
+				void process ();
+
+			public:
+				const unsigned component;
+
+				gradient_iterator (const gradient_iterator & copy);
+				gradient_iterator (const unsigned component, const CubeDataRegionDescriptor & dgtmpl, const Coords & c0, const Coords & cN, FieldStrength ** vvStripes, FieldStrength * vValues);
+
+				inline unsigned index() const { return _index; }
+
+				inline
+					operator const Coords & () const { return _coords; }
+
+				inline
+					const FieldDifference & operator * () const { return _curr; }
+
+				inline
+					const FieldDifference * operator -> () const { return &_curr; }
+
+				inline
+					operator bool () const { return !_term; }
+
+				inline
+					gradient_iterator & operator ++ ()
+				{
+					process();
+					return *this;
+				}
+
+				inline
+					gradient_iterator operator ++ (int)
+				{
+					gradient_iterator old = *this;
+					process();
+					return old;
+				}
+			};
+
 			const int min, max;
 			FieldStrength * const values;
 
@@ -163,6 +293,16 @@ namespace Ogre
 				return iterate(-1, -1, -1, _cubemeta.dimensions+1, _cubemeta.dimensions+1, _cubemeta.dimensions+1);
 			}
 			iterator iterate (
+				const signed short x0, const signed short y0, const signed short z0,
+				const signed short xN, const signed short yN, const signed short zN
+			);
+
+			inline 
+			gradient_iterator iterate_gradient(const unsigned component)
+			{
+				return iterate_gradient(component, 0, 0, 0, _cubemeta.dimensions, _cubemeta.dimensions, _cubemeta.dimensions);
+			}
+			gradient_iterator iterate_gradient(const unsigned component,
 				const signed short x0, const signed short y0, const signed short z0,
 				const signed short xN, const signed short yN, const signed short zN
 			);
