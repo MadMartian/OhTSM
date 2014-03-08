@@ -326,7 +326,7 @@ namespace Ogre
 				enStitches, pISR->getVertexBufferCapacity(nLOD)
 			);
 			if (_bResetHWBuffers)
-				_pResolution->clearHardwareState();
+				pResolution->clearHardwareState();
 			pISR->directlyPopulateBuffers(_pMainVtxElems, pResolution, enStitches, _pMainVtxElems->vertexShipment.size(), _pMainVtxElems->triangles.size() * 3);
 		}
 	}
