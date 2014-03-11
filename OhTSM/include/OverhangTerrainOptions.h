@@ -100,7 +100,7 @@ namespace Ogre
 			int qid;
 
 			/// Flags describing what channels of a CubeDataRegion are relevant
-			OverhangTerrainVoxelRegionFlags voxelRegionFlags;
+			size_t voxelRegionFlags;
 
 			ChannelOptions();
 		};

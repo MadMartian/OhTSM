@@ -33,9 +33,11 @@ http://www.gnu.org/copyleft/lesser.txt.
 #include "OverhangTerrainPageProvider.h"
 #include "OverhangTerrainPageInitParams.h"
 #include "OverhangTerrainPagedWorldSection.h"
+#include "OverhangTerrainSlot.h"
 
 #include "MetaFactory.h"
 #include "ChannelIndex.h"
+#include "HardwareIsoVertexShadow.h"
 
 #include <OgreWorkQueue.h>
 #include <OgreStreamSerialiser.h>
@@ -49,182 +51,10 @@ namespace Ogre
 	class _OverhangTerrainPluginExport OverhangTerrainGroup : public WorkQueue::RequestHandler, public WorkQueue::ResponseHandler, public GeneralAllocatedObject, public OverhangTerrainManager
 	{
 	public:
-		// Used to define a loadable and unloadable slot of terrain data, contains multiple terrain tiles and has a one-to-one mapping with overhang terrain pages
-		class _OverhangTerrainPluginExport TerrainSlot : public GeneralAllocatedObject
-		{
-		public:
-			/* Used to minimize the use of locking, terrain slot states signify what operations are currently executing on its dependencies.
-			Each enum constant indicates the permitted states that the state machine may transition from
-			*/
-			enum State
-			{
-				/** Nothing is happening, slot is available to lease for any operation
-				Transition to one of: TSS_Mutate, TSS_Saving, TSS_SaveUnload, TSS_NeighborQuery */
-				TSS_Neutral = ~0,
-				/** The slot is empty, no terrain page is loaded in this slot currently
-				Transition to one of: TSS_Loading */
-				TSS_Empty = 0,
-				/** The slot has at least one adjacent slot performing a neighborhood query that depends on this slot
-				Transition to one of: TSS_NeighborQuery, TSS_Neutral */
-				TSS_NeighborQuery = 1,
-				/** A background thread is currently unloading a terrain page
-				Transition to one of: TSS_Empty */
-				TSS_Unloading = 2,
-				/** A background thread is currently loading a terrain page
-				Transition to one of: TSS_Neutral (TODO: TSS_Unloading) */
-				TSS_Loading = 3,
-				/** A background thread is currently saving a terrain page
-				Transition to one of: TSS_Neutral, TSS_SaveUnload */
-				TSS_Saving = 4,
-				/** A background thread is currently being exposed to gamma radiation :p
-				Transition to one of: TSS_Neutral */
-				TSS_Mutate = 5,
-				/** A background thread is currently querying the slot
-				Transition to one of: TSS_Neutral */
-				TSS_Query = 6,
-				/** The slot is reserved for destruction in preparation for removing all terrain from the group once all background tasks have completed */
-				TSS_Destroy = 7
-			};
+		typedef std::map< uint32, OverhangTerrainSlot * > TerrainSlotMap;
 
-		private:
-			/// For the TSS_NeighborQuery state, tracks which neighbors are enforcing the neighbor query state on this slot
-			size_t queryNeighbors;
-			/// Query stack count
-			size_t queryCount;
-			/// The current state
-			State _enState, 
-			/// The previous state
-				_enState0;
-			
-			/// Represents a task that will be run for a terrain slot immediately once it returns to the TSS_Neutral state from a non-neutral background task state
-			struct JoinTask
-			{
-				enum TaskType
-				{
-					/// The terrain slot and page data will be removed from the scene and destroyed
-					JTT_Destroy,
-					/// The material for the page and its renderables will be set
-					JTT_SetMaterial,
-					/// The render queue group for the page and its renderables will be set
-					JTT_SetQID
-				} 
-				/// The type of task to perform
-				type;
-				
-				/// Applies to all channel-related task types
-				Channel::Ident channel;
-
-				/// Applies to the JTT_SetMaterial task type
-				MaterialPtr material;
-
-				/// Applies to the JTT_SetQID task type
-				int qid;
-			};
-			typedef std::queue< JoinTask > JoinTaskQueue;
-
-			/// A queue of tasks that will be executed after background task on this slot finishes
-			JoinTaskQueue _qJoinTasks;
-
-			/// Completes all pending tasks
-			void processPendingTasks ();
-
-		public:
-			/// A state exception for attempting to transition to invalid states
-			class _OverhangTerrainPluginExport StateEx : public std::exception 
-			{
-			public:
-				StateEx( const char * szMsg );
-			};
-
-			/// 2D index of the terrain slot in the group
-			int16 x, y;
-			/// A pointer to the terrain page, can be NULL
-			PageSection * instance;
-			/// @see PageSection::getPosition()
-			Vector3 position;
-
-			// Structure used for serializing terrain state
-			struct LoadData
-			{
-				PageInitParams params;
-
-				LoadData (const OverhangTerrainOptions & options, const int16 pageX, const int16 pageY) : params(options, pageX, pageY) {}
-			} * data;
-
-			/** 
-			@param x X-component of the 2D index of this slot in the group
-			@param y Y-component of the 2D index of this slot in the group
-			*/
-			TerrainSlot (const int16 x, const int16 y);
-
-			/// @returns The current state
-			State state() const { return _enState; }
-			/// @returns True if the slot in its current state may transition to TSS_Mutate
-			bool canMutate () const { return _enState == TSS_Neutral; }
-			/// @returns True if the slot in its current state may transition to TSS_Destroy
-			bool canDestroy () const { return _enState == TSS_Neutral; }
-			/// @returns True if the slot in its current state may transition to TSS_Unloading
-			bool canUnload () const { return _enState == TSS_Neutral; }
-			/// @returns True if the slot in its current state may transition to TSS_Saving or TSS_SaveUnload
-			bool canSave () const { return _enState == TSS_Neutral || _enState == TSS_Query; }
-			/// @returns True if the slot in its current state allows interrogation and the terrain page isn't undergoing some kind of alteration / mutation in a background thread
-			bool canRead () const { return _enState == TSS_Neutral || _enState == TSS_Saving || _enState == TSS_Query;}
-			/// @returns True if the specified neighbor slot has this slot under TSS_NeighborQuery state
-			bool isNeighborQueried (const VonNeumannNeighbor evnNeighbor) const;
-			/// @returns True if this slot in its current state can neighbor query the specified neighbor slot
-			bool canNeighborQuery (const VonNeumannNeighbor evnNeighbor) const;
-			/// Transitions to the TSS_NeighborQuery state for the specified neighbor
-			void setNeighborQuery (const VonNeumannNeighbor evnNeighbor);
-			/// Clears the neighbor query state on this slot from the specified neighbor transitioning back to the previous state before all TSS_NeighborQuery states if there are none left on this slot
-			void clearNeighborQuery (const VonNeumannNeighbor evnNeighbor);
-
-			/// Transitions to the TSS_Saving state, throws StateEx if the current slot state forbids the transition
-			void saving ();
-			/// Transitions from the TSS_Saving state back to the previous state before TSS_Saving, throws StateEx if the current slot state forbids the transition
-			void doneSaving();
-			
-			/// Transitions to the TSS_SaveUnload state, throws StateEx if the current slot state forbids the transition
-			void saveUnload();
-
-			/// Transitions to the TSS_Mutate state, throws StateEx if the current slot state forbids the transition
-			void mutating ();
-			/// Transitions from the TSS_Mutate state back to TSS_Neutral, throws StateEx if the current slot state forbids the transition
-			void doneMutating();
-
-			/// Transitions to the TSS_Query state, throws StateEx if the current slot state forbids the transition
-			void query ();
-			/// Transitions from the TSS_Query state back to TSS_Neutral, throws StateEx if the current slot state forbids the transition
-			void doneQuery();
-
-			/// Transitions to the TSS_Loading state, throws StateEx if the current slot state forbids the transition
-			void loading ();
-			/// Transitions from the TSS_Loading state back to TSS_Neutral, throws StateEx if the current slot state forbids the transition
-			void doneLoading();
-
-			/// Transitions to the TSS_Unloading state, throws StateEx if the current slot state forbids the transition
-			void unloading ();
-			/// Transitions from the TSS_Unloading state to TSS_Empty, throws StateEx if the current slot state forbids the transition
-			void doneUnloading();
-
-			/// Transitions from the TSS_Neutral state to the TSS_Destroy state, throws StateEx if the current slot state forbids the transition
-			void destroy();
-
-			/// Frees-up and nullifies a structure designed to hold data required for loading this slot's terrain page
-			void freeLoadData ();
-
-			/// Sets the material of the page-wide channel or queues a request to do so if the slot is busy
-			void setMaterial (const Channel::Ident channel, MaterialPtr pMaterial);
-
-			/// Sets the render queue group of the page-wide channel or queues a request to do so if the slot is busy
-			void setRenderQueueGroup (const Channel::Ident channel, const int nQID);
-			
-			/// Deletes the page and marks the slot as TSS_Destroy or queues a request to do so if the slot is busy
-			void destroySlot ();
-
-			~TerrainSlot();
-		};
-
-		typedef std::map< uint32, TerrainSlot * > TerrainSlotMap;
+		/// Thrown when a background request of a type that cannot be aborted was aborted anyway
+		class AbortEx : public std::exception {};
 
 		/**
 		@param sm Pointer to the scene manager used to obtain the main top-level configuration options (among other things)
@@ -270,19 +100,30 @@ namespace Ogre
 		@param synchronous Whether or not to execute the operation in this thread and not leverage threading capability */
 		void addMetaBall(const Vector3 & position, const Real radius, const bool excavating = true, const bool synchronous = false);
 
+		/** Generates an iso-surface configuration
+		@param pMF The meta-fragment whose iso-surface to generate a configuration from
+		@param nLOD The level of detail to generate
+		@param enStitches The boundary multi-resolution stitch configuration to generate
+		@returns The request ID for the queued background request */
+		WorkQueue::RequestID generateSurfaceConfiguration( MetaFragment::Container * pMF, const IsoSurfaceRenderable * pISR, const unsigned nLOD, const Touch3DFlags enStitches );
+
+		/** Cancels a previously issued task 
+		@param rid The request ID of the task to cancel */
+		void cancelRequest(const WorkQueue::RequestID rid);
+
 		/** Retrieves the terrain slot at the specified 2D index
 		@remarks Retrieves the terrain slot at the coordinates specified optionally creating one if specified
 		@param x The x-coordinate of the slot
 		@param y The y-cooridnate of the slot
 		@param createIfMissing Whether or not to create a terrain slot at the specified coordinates
 		@returns The terrain slot at the specified coordinates or NULL if we're not creating one if its empty */
-		TerrainSlot* getTerrainSlot(const int16 x, const int16 y, bool createIfMissing);
+		OverhangTerrainSlot* getTerrainSlot(const int16 x, const int16 y, bool createIfMissing);
 
 		/** Retrieves the terrain slot at the specified 2D index
 		@param x The x-coordinate of the slot
 		@param y The y-cooridnate of the slot
 		@returns The terrain slot at the specified coordinates or NULL if there isn't one yet */
-		TerrainSlot* getTerrainSlot(const int16 x, const int16 y) const;
+		OverhangTerrainSlot* getTerrainSlot(const int16 x, const int16 y) const;
 
 		/** Test for intersection of a given ray with any terrain in the group. If the ray hits a terrain, the point of 
 			intersection and terrain instance is returned.
@@ -308,7 +149,7 @@ namespace Ogre
 			The operation is performed in the background or synchronously if requested.
 		@param pSlot The terrain slot to unload the terrain from
 		@param synchronous Whether or not to perform the unload operation in the main thread instead of leveraging a background thread */
-		void unloadTerrainImpl( TerrainSlot * pSlot, const bool synchronous = false );
+		void unloadTerrainImpl( OverhangTerrainSlot * pSlot, const bool synchronous = false );
 
 		/** Ensures the terrain slot is defined (allocated) and optionally queues a background request for loading terrain at the specified coordinates either 
 			from disk or from a custom page provider.
@@ -334,6 +175,12 @@ namespace Ogre
 		virtual bool canHandleResponse( const WorkQueue::Response* res, const WorkQueue* srcQ );
 		virtual void handleResponse( const WorkQueue::Response* res, const WorkQueue* srcQ );
 
+		/** Called whenever a request is aborted and received before dispatch.  
+			If a request does not exist or was aborted after dispatch, then this method is never called for the request.
+		@param req The originating request object of the request being aborted
+		@param srcQ The request queue handling the request */
+		void handleAbort( const WorkQueue::Request * req, const WorkQueue * srcQ );
+
 		inline String getResourceGroupName() const { return _sResourceGroup; }
 
 	protected:
@@ -349,7 +196,9 @@ namespace Ogre
 			/// Save a page to disk task
 			SavePage = 4,
 			/// Destroy and clear the scene of all terrains task
-			DestroyAll = 5
+			DestroyAll = 5,
+			/// Build an iso-surface of a particular configuration
+			BuildSurface = 6
 		};
 
 		/// The main factory singleton for creating top-level objects
@@ -368,12 +217,12 @@ namespace Ogre
 		Channel::Index< ChannelProperties > _chanprops;
 
 		/// Factory method for creating PageSection instances
-		PageSection * createPage ();
+		PageSection * createPage (OverhangTerrainSlot * pSlot);
 
 		/** Fills the array with the neighborhood of the specified slot
 		@param vpSlots The array to fill with neighbors of the specified slot, preallocated to support 4 pointers to TerrainSlot
 		@param pSlot The slot from which to obtain the neighborhood */
-		void fillNeighbors (TerrainSlot ** vpSlots, const TerrainSlot * pSlot);
+		void fillNeighbors (OverhangTerrainSlot ** vpSlots, const OverhangTerrainSlot * pSlot);
 
 		/** Converts the specified coordinates to slot coordinates identifying a terrain slot
 		@param pt The coordinates to convert
@@ -407,9 +256,23 @@ namespace Ogre
 		struct WorkRequest : public WorkRequestBase
 		{
 			/// Object of the request
-			TerrainSlot * slot;
+			OverhangTerrainSlot * slot;
 
 			_OverhangTerrainPluginExport friend std::ostream & operator << (std::ostream & o, const WorkRequest & r)
+			{ return o; }
+		};
+
+		struct SurfaceGenRequest : public WorkRequest
+		{
+			const MetaFragment::Container * mf;
+			SharedPtr< HardwareShadow::HardwareIsoVertexShadow > shadow;
+			Channel::Ident channel;
+			unsigned lod;
+			size_t surfaceFlags;
+			Touch3DFlags stitches;
+			size_t vertexBufferCapacity;
+
+			_OverhangTerrainPluginExport friend std::ostream & operator << (std::ostream & o, const SurfaceGenRequest & r)
 			{ return o; }
 		};
 
@@ -426,7 +289,7 @@ namespace Ogre
 			/// The excavation flag for the metaball
 			bool excavating;
 
-			typedef std::vector< TerrainSlot * > SlotList;
+			typedef std::vector< OverhangTerrainSlot * > SlotList;
 			/// The terrain slots that are affected and must be updated by this metaball representation
 			SlotList slots;
 
@@ -450,22 +313,22 @@ namespace Ogre
 		@param pSlot The terrain slot to save
 		@param synchronous Whether to execute the task synchronously in the main thread or concurrently in a background thread
 		@returns True if the terrain was queued for saving, false otherwise (as in the state of the slot forbade it) */		
-		bool saveTerrain (TerrainSlot * pSlot, const bool synchronous = false);
+		bool saveTerrain (OverhangTerrainSlot * pSlot, const bool synchronous = false);
 
 		/** Queues a save request regardless of the terrain slot state
 		@param pSlot The terrain slot to save
 		@param synchronous Whether to execute the task synchronously in the main thread or concurrently in a background thread */
-		void saveTerrainImpl( TerrainSlot * pSlot, const bool synchronous = false );
+		void saveTerrainImpl( OverhangTerrainSlot * pSlot, const bool synchronous = false );
 
 		/// The worker method for saving a particular terrain slot
-		void saveTerrain_worker(TerrainSlot * pSlot );
+		void saveTerrain_worker(OverhangTerrainSlot * pSlot );
 		/// The final response steps of saving a particular terrain slot
-		void saveTerrain_response( TerrainSlot * slot );
+		void saveTerrain_response( OverhangTerrainSlot * slot );
 
 		/** Initialize a page and bind it to the scene for rendering
 		@param page The page that should be initialized and bound to the scene
 		@param data Data necessary for completing page initialization */
-		void preparePage(PageSection * const page, const TerrainSlot::LoadData * data);
+		void preparePage(PageSection * const page, const OverhangTerrainSlot::LoadData * data);
 
 		/** Links-up neighbors for the specified page with terrain pages from the Von Neumann neighborhood terrain slots
 		@param x The x-component of the slot index
@@ -490,20 +353,22 @@ namespace Ogre
 			state change, in which case no change is made to any slots.
 		@param slot The terrain slot whose neighborhood will undergo possible state change
 		@returns True if the neighborhood of terrain-tiles was transitioned to TSS_NeighborQuery successfully, false if nothing was changed */
-		bool tryLockNeighborhood( const TerrainSlot * slot );
+		bool tryLockNeighborhood( const OverhangTerrainSlot * slot );
 		/** Reverses the state change to TSS_NeighborQuery previously accomplished by a call to lock the neighborhood
 		@param slot The terrain slot whose neighborhood shall undergo state reversion */
-		void unlockNeighborhood( const TerrainSlot* slot );
+		void unlockNeighborhood( const OverhangTerrainSlot* slot );
 
 		/// Worker tasks for defining / loading a terrain slot
-		bool defineTerrain_worker( TerrainSlot * slot );
+		bool defineTerrain_worker( OverhangTerrainSlot * slot );
 		/// Final steps in defining / loading a terrain slot
-		void defineTerrain_response( TerrainSlot* slot );
+		void defineTerrain_response( OverhangTerrainSlot* slot );
+		/// Dipose operations for defining / loading a terrain, called after response or when aborted
+		void defineTerrain_dispose( OverhangTerrainSlot* slot );
 
 		/// Worker tasks for unloading a terrain slot
-		void unloadTerrain_worker( TerrainSlot * slot, UnloadPageResponseData & respdata );
+		void unloadTerrain_worker( OverhangTerrainSlot * slot, UnloadPageResponseData & respdata );
 		/// Final steps in unloading a terrain slot
-		void unloadTerrain_response( TerrainSlot * pSlot, UnloadPageResponseData &data );
+		void unloadTerrain_response( OverhangTerrainSlot * pSlot, UnloadPageResponseData &data );
 
 		/// Final steps in clearing the scene of all terrain tiles, this does the heavy lifting of deleting all terrain objects if the scene is ready to do so, otherwise it polls by making a call to 'clear()'
 		void clear_response();

@@ -115,7 +115,7 @@ namespace Ogre
 
 		HardwareIsoVertexShadow::~HardwareIsoVertexShadow()
 		{
-			{ OGRE_LOCK_MUTEX(_mutex);
+			{ OGRE_LOCK_RW_MUTEX_WRITE(_mutex);
 				 for (unsigned i = 0; i < _nCountResolutions; ++i)
 					 delete _vpResolutions[i];
 				 delete [] _vpResolutions;
@@ -125,7 +125,7 @@ namespace Ogre
 
 		void HardwareIsoVertexShadow::reset()
 		{
-			{ OGRE_LOCK_MUTEX(_mutex);
+			{ OGRE_LOCK_RW_MUTEX_WRITE(_mutex);
 				delete _pBuilderQueue;
 				_pBuilderQueue = NULL;
 				for (unsigned i = 0; i < _nCountResolutions; ++i)
@@ -135,7 +135,7 @@ namespace Ogre
 
 		void HardwareIsoVertexShadow::clear()
 		{
-			{ OGRE_LOCK_MUTEX(_mutex);
+			{ OGRE_LOCK_RW_MUTEX_WRITE(_mutex);
 				delete _pBuilderQueue;
 				_pBuilderQueue = NULL;
 				for (unsigned i = 0; i < _nCountResolutions; ++i)
@@ -145,12 +145,17 @@ namespace Ogre
 
 		HardwareIsoVertexShadow::ConsumerLock HardwareIsoVertexShadow::requestConsumerLock(const unsigned char nLOD, const Touch3DFlags enStitches)
 		{
-			return ConsumerLock (boost::recursive_mutex::scoped_try_lock(_mutex), _pBuilderQueue, _vpResolutions[nLOD], enStitches);
+			return ConsumerLock (boost::shared_lock< boost::shared_mutex > (_mutex, boost::try_to_lock), _pBuilderQueue, _vpResolutions[nLOD], enStitches);
 		}
  
 		HardwareIsoVertexShadow::ProducerQueueAccess HardwareIsoVertexShadow::requestProducerQueue(const unsigned char nLOD, const Touch3DFlags enStitches)
 		{
-			return ProducerQueueAccess (boost::recursive_mutex::scoped_lock(_mutex), _pBuilderQueue, _vpResolutions[nLOD], enStitches);
+			return ProducerQueueAccess (boost::unique_lock< boost::shared_mutex > (_mutex), _pBuilderQueue, _vpResolutions[nLOD], enStitches);
+		}
+
+		HardwareIsoVertexShadow::ReadOnlyAccess HardwareIsoVertexShadow::requestReadOnlyAccess( const unsigned char nLOD )
+		{
+			return ReadOnlyAccess (boost::shared_lock< boost::shared_mutex > (_mutex), _vpResolutions[nLOD]);
 		}
 
 		HardwareIsoVertexShadow::ConsumerLock::QueueAccess::~QueueAccess()
@@ -181,17 +186,26 @@ namespace Ogre
 			_bDeconstruct = true;
 		}
 
+		HardwareIsoVertexShadow::ReadOnlyAccess::ReadOnlyAccess( boost::shared_lock< boost::shared_mutex > && lock, const LOD * pResolution )
+			:	_lock(static_cast< boost::shared_lock< boost::shared_mutex > && > (lock)),
+				resolution(pResolution)
+		{}
+
+		HardwareIsoVertexShadow::ReadOnlyAccess::ReadOnlyAccess( ReadOnlyAccess && move )
+			: _lock(static_cast< boost::shared_lock< boost::shared_mutex > && > (move._lock)), resolution(move.resolution)
+		{}
+
 		HardwareIsoVertexShadow::ProducerQueueAccess::ProducerQueueAccess (
-			boost::recursive_mutex::scoped_lock && lock, 
+			boost::unique_lock< boost::shared_mutex > && lock, 
 			BuilderQueue *& pBuilderQueue, 
 			LOD * pResolution, const Touch3DFlags enStitches
 		)
 		:	ConcurrentProducerConsumerQueueBase(reallocate(pBuilderQueue, pResolution, enStitches)), 
-			_lock(static_cast< boost::recursive_mutex::scoped_lock && > (lock))
+			_lock(static_cast< boost::unique_lock<boost::shared_mutex> && > (lock))
 		{}
 
 		HardwareIsoVertexShadow::ProducerQueueAccess::ProducerQueueAccess( ProducerQueueAccess && move )
-		: ConcurrentProducerConsumerQueueBase(static_cast< ProducerQueueAccess && > (move)), _lock(static_cast< boost::recursive_mutex::scoped_lock && > (move._lock)) {}
+		: ConcurrentProducerConsumerQueueBase(static_cast< ProducerQueueAccess && > (move)), _lock(static_cast< boost::unique_lock<boost::shared_mutex> && > (move._lock)) {}
 
 		BuilderQueue *& HardwareIsoVertexShadow::ProducerQueueAccess::reallocate( BuilderQueue *& pBuilderQueue, LOD * pResolution, const Touch3DFlags enStitches )
 		{
@@ -233,11 +247,11 @@ namespace Ogre
 
 		HardwareIsoVertexShadow::ConsumerLock::ConsumerLock
 		( 
-			boost::recursive_mutex::scoped_try_lock && lock, 
+			boost::shared_lock< boost::shared_mutex > && lock, 
 			BuilderQueue *& pBuilderQueue, 
 			LOD * pResolution, const Touch3DFlags enStitches 
 		) 
-		:	_lock(static_cast< boost::recursive_mutex::scoped_try_lock && > (lock)), 
+		:	_lock(static_cast< boost::shared_lock< boost::shared_mutex > && > (lock)), 
 			_pBuilderQueue(pBuilderQueue), 
 			_pResolution(pResolution), _enStitches(enStitches)
 		{}
@@ -245,8 +259,9 @@ namespace Ogre
 		HardwareIsoVertexShadow::ConsumerLock::ConsumerLock( ConsumerLock && move ) 
 		:	_pBuilderQueue(move._pBuilderQueue), 
 			_pResolution(move._pResolution), _enStitches(move._enStitches), 
-			_lock(static_cast< boost::recursive_mutex::scoped_try_lock && > (move._lock))
+			_lock(static_cast< boost::shared_lock< boost::shared_mutex > && > (move._lock))
 		{}
+
 
 	}
 

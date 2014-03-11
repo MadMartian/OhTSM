@@ -34,6 +34,7 @@ Torus Knot Software Ltd.
 #include <OgreException.h>
 #include <OgreStreamSerialiser.h>
 #include <OgreLog.h>
+#include <OgreVector3.h>
 
 #include "OverhangTerrainPrerequisites.h"
 #include "Neighbor.h"

@@ -19,9 +19,9 @@ ExampleController::ExampleController(
 bool ExampleController::processUnbufferedMouseInput( const FrameEvent& evt )
 {
 	if (mMouse->getMouseState().buttonDown(OIS::MB_Left))
-		shootMetaball(true);
+		shootMetaball(Ray(mCamera->getPosition(), mCamera->getDirection()), true);
 	else if (mMouse->getMouseState().buttonDown(OIS::MB_Right))
-		shootMetaball(false);
+		shootMetaball(Ray(mCamera->getPosition(), mCamera->getDirection()), false);
 
 	return ExampleFrameListener::processUnbufferedMouseInput(evt);
 }
@@ -32,7 +32,7 @@ bool ExampleController::processUnbufferedKeyInput( const FrameEvent& evt )
 
 	if (mKeyboard->isKeyDown(OIS::KC_ADD) && _nTimeTracker > 0.25f)
 	{
-		shootMetaball();
+		shootMetaball(Ray(mCamera->getPosition(), mCamera->getRealDirection()));
 		_nTimeTracker = 0.0f;
 	}
 	if (mKeyboard->isKeyDown(OIS::KC_MINUS) && _nTimeTracker > 0.25f)
@@ -54,10 +54,9 @@ bool ExampleController::processUnbufferedKeyInput( const FrameEvent& evt )
 	return ExampleFrameListener::processUnbufferedKeyInput(evt);
 }
 
-void ExampleController::shootMetaball( const bool bExcavating /*= true*/ )
+void ExampleController::shootMetaball( const Ray & ray, const bool bExcavating /*= true*/ )
 {
 	// zAxis because by default the camera's direction is 
-	Ray ray(mCamera->getPosition(), mCamera->getRealDirection());
 	RaySceneQuery * rsq = _pScMgr->createRayQuery(ray);
 
 	rsq->execute(bExcavating ? &_digger : &_builder);

@@ -337,6 +337,8 @@ namespace Ogre
 	template< typename T >
 	struct BaseNonTrivialCase
 	{
+		/// The type used for the case-code
+		typedef T CodeType;
 		/// The cell representing this case
 		CellIndex cell;
 		/// Combination of flags for all the voxels in the cell

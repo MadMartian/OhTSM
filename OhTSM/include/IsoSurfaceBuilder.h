@@ -35,6 +35,7 @@ http://www.gnu.org/copyleft/lesser.txt.
 #include "IsoSurfaceSharedTypes.h"
 #include "HardwareIsoVertexShadow.h"
 #include "CubeDataRegion.h"
+#include "CubeDataRegionDescriptor.h"
 #include "Neighbor.h"
 #include "Util.h"
 #include "TransvoxelTables.h"
@@ -63,7 +64,7 @@ namespace Ogre
 		a multi-resolution stitching algorithm provided by Transvoxel.
 		NOTE: This algorithm makes references to illustrations in Eric Lengyel's 2010 dissertation
 	*/
-	class IsoSurfaceBuilder : public WorkQueue::RequestHandler, public WorkQueue::ResponseHandler
+	class IsoSurfaceBuilder
 	{
 	public:
 		/** Channel-specific properties that apply to the kind of surface that the builder is currently working-on */
@@ -159,19 +160,6 @@ namespace Ogre
 			const Touch3DFlags enTouchFlags
 		);
 
-		/// Cancel a queued IsoSurface build request
-		void cancelBuild(const WorkQueue::RequestID & rid);
-
-		/** Builds an isosurface concurrently
-		@remarks Leverages WorkQueue to concurrently extract an isosurface from a voxel cube region and updates the specified surface in the main thread when finished
-		@param pCube The voxel cube data to extract the surface from
-		@param pISR The renderable that will be updated with the extracted surface in the main thread
-		@param nLOD The LOD of the surface to build
-		@param enStitches Indicates what sides to generate transition cells for
-		@returns The request ID of the backgrounded task
-		*/
-		WorkQueue::RequestID requestBuild(const Voxel::CubeDataRegion * pCube, IsoSurfaceRenderable * pISR, const unsigned nLOD, const Touch3DFlags enStitches);
-
 		/** Builds an isosurface
 		@remarks Extracts an isosurface from a voxel cube region and updates the specified surface when finished
 		@param pCube The voxel cube data to extract the surface from
@@ -181,31 +169,26 @@ namespace Ogre
 		*/
 		void build (const Voxel::CubeDataRegion * pCube, IsoSurfaceRenderable * pISR, const unsigned nLOD, const Touch3DFlags enStitches);
 
+		/** Builds an isosurface and queues the data for later propagation to GPU
+		@remarks Extracts an isosurface from a voxel cube region and queues the data.  It is the caller's responsibility to manually propagate the data from the queue
+			to the GPU hardware.  This may only be called by the OverhangTerrainGroup.  
+		@param pMF The meta-fragment that contains the voxel cube data to extract the surface from, its life-cycle must persist for the concurrent extraction workflow here.
+		@param pShadow The hardware shadow of the corresponding renderable, hosts the queue for data that will be propagated to the GPU in the main thread
+		@param lod The LOD of the surface to build
+		@param nSurfaceFlags Flags used to tell the surface-builder what is awesome and hip, in other words I _used_ to know what this was for
+		@param enStitches Indicates what sides to generate transition cells for
+		@param nVertexBufferCapacity The current capacity of the GPU vertex buffer, used to determine if it must be resized post-surface-generation */
+		void queueBuild( 
+			const MetaFragment::Container * pMF, 
+			SharedPtr< HardwareShadow::HardwareIsoVertexShadow > pShadow, 
+			const Channel::Ident channel, 
+			const unsigned lod, 
+			const size_t nSurfaceFlags, 
+			const Touch3DFlags enStitches, 
+			const size_t nVertexBufferCapacity 
+		);
+
 	protected:
-		enum RequestType
-		{
-			RT_BuildSurface
-		};
-
-		uint16 _nWorkQChannID;
-
-		struct BuildSurfaceTaskData
-		{
-			const Voxel::CubeDataRegion * cubedata;
-			SharedPtr< HardwareShadow::HardwareIsoVertexShadow > shadow;
-			Channel::Ident channel;
-			unsigned lod;
-			size_t surfaceFlags;
-			Touch3DFlags stitches;
-			size_t vertexBufferCapacity;
-#if defined(_DEBUG) || defined(_OHT_LOG_TRACE)
-			DebugInfo debugs;
-#endif
-
-			_OverhangTerrainPluginExport friend std::ostream & operator << (std::ostream & o, const BuildSurfaceTaskData & r)
-				{ return o; }
-		};
-
 		/// The algorithm for extracting isosurfaces
 		void buildImpl(
 #if defined(_DEBUG) || defined(_OHT_LOG_TRACE)
@@ -335,6 +318,101 @@ namespace Ogre
 			friend Ogre::Log::Stream & operator << (Ogre::Log::Stream &, const GridCell &);
 		};
 
+		/** Iterates through the 8 corners of a voxel region cell depending on the LOD chosen and the starting index chosen.
+		*/
+		class RegularCaseCodeCompiler
+		{
+		public:
+			struct Result
+			{
+				VoxelIndex index;
+				NonTrivialRegularCase::CodeType casecode;
+				bool trivial;
+
+				Result(const Result & copy);
+				Result(const VoxelIndex index);
+				Result();
+
+				Result & operator = (const Result & copy);
+			};
+
+			/** Defines offsets for iterating grid-cell corners and grid cells through a 3D region within a 3D region */
+			const struct Advance
+			{
+				int mx, my, mz;
+			} advanceCorners, advanceCells;
+
+		private:
+			/// The current iteration state
+			Result _result;
+			/// The access to the voxels
+			const Voxel::const_DataAccessor & _vxaccess;
+
+			/// Computes the Advance for grid-cell corners based on the specified LOD and meta-information singleton
+			static Advance computeAdvanceCorners(const unsigned short nLOD, const Voxel::CubeDataRegionDescriptor & cdrd);
+			/// Computes the Advance for grid-cells based on the specified LOD and meta-information singleton
+			static Advance computeAdvanceCells(const unsigned short nLOD, const Voxel::CubeDataRegionDescriptor & cdrd);
+
+			/** Computes a single bit of a case code for the specified voxel
+			@remarks This takes the voxel at the specified voxel-index + corner index into the voxel region, computes the appropriate
+				case-code bit for the specified corner index, and modifies the 'casecode' out-parameter value accordingly.
+			@param index The base voxel-index analogous to cell index, points to the voxel at corner 0
+			@param corner The corner offset from the specified voxel-index that identifies the cell to work with
+			@param casecode (out) ORs the appropriate bit in this variable, so it never clears bits
+			@param gc7 Stores the bit-result before applying the bit-mask, relevant only at corner 7 to quickly determine a trivial case code (entirely solid or entirely empty) */
+			inline void step(const VoxelIndex index, const unsigned corner, unsigned char & casecode, signed char & gc7) const
+			{
+				casecode |= (gc7 = (_vxaccess.values[index] >> (8 - 1 - corner))) & (1 << corner);
+			}
+
+			/// Computes the casecode at the current cell identified by the current voxel index at corner 0
+			void process();
+
+		public:
+			RegularCaseCodeCompiler(const unsigned short nLOD, const Voxel::const_DataAccessor & vx, const Voxel::CubeDataRegionDescriptor & cdrd);
+			RegularCaseCodeCompiler(const VoxelIndex index, const unsigned short nLOD, const Voxel::const_DataAccessor & vx, const Voxel::CubeDataRegionDescriptor & cdrd);
+			RegularCaseCodeCompiler(const RegularCaseCodeCompiler & copy);
+
+			inline
+				const Result & operator * () const { return _result; }
+
+			inline
+				const Result * operator -> () const { return &_result; }
+
+			/// Calculates the case-code at the current index and advances the pointer
+			inline
+				RegularCaseCodeCompiler & operator ++ ()
+			{
+				process();
+				return *this;
+			}
+
+			/// Calculates the case-code at the current index and advances the pointer
+			inline
+				RegularCaseCodeCompiler operator ++ (int)
+			{
+				RegularCaseCodeCompiler old = *this;
+				process();
+				return old;
+			}
+
+			/// Advances the pointer by the specified amount, does not perform any case-code calculation
+			inline
+				RegularCaseCodeCompiler & operator += (const int delta)
+			{
+				_result.index += delta;
+				return *this;
+			}
+
+			/// Sets the pointer to the specified index, does not perform any case-code calculation
+			inline
+				RegularCaseCodeCompiler & operator = (const VoxelIndex & index)
+			{
+				_result.index = index;
+				return *this;
+			}
+		};
+
 		/** Iterates through all cells and voxel points of each cell throughout a 3D voxel grid by iterating through
 			all corners of each grid-cell and then iterating to the next grid-cell until all grid-cells have been visited
 			in the voxel-grid */
@@ -342,14 +420,19 @@ namespace Ogre
 		{
 		public:
 			/** Each iteration yields current voxel-grid index, grid-cell and corner */
-			struct Result
+			struct Result : public RegularCaseCodeCompiler::Result
 			{
-				VoxelIndex index;
-				size_t corner;
 				GridCell gc;
 
 				Result(const GridCell & gc);
 				Result(const Result & copy);
+
+				inline
+				Result & operator = (const RegularCaseCodeCompiler::Result & base)
+				{
+					static_cast< RegularCaseCodeCompiler::Result * > (this) -> operator = (base);
+					return *this;
+				}
 			};
 
 		private:
@@ -358,44 +441,28 @@ namespace Ogre
 			/// Dimensions of the grid-cell, determined by 2^LOD
 			VoxelIndex _span;
 
+			/// The case-code compiler that will be used
+			RegularCaseCodeCompiler _ccc;
+
 			/// Coroutine context-switch points
 			OHT_CR_CONTEXT;
 			enum CRS
 			{
-				CRS_Default = 0,
-				CRS_0 = 1,
-				CRS_1 = 2,
-				CRS_2 = 3,
-				CRS_3 = 4,
-				CRS_4 = 5,
-				CRS_5 = 6,
-				CRS_6 = 7,
-				CRS_7 = 8
+				CRS_Default = 1
 			};
 
 			/// The current iteration state
 			Result _result;
 
-			/** Defines offsets for iterating grid-cell corners and grid cells through a 3D region within a 3D region */
-			const struct Advance
-			{
-				int mx, my, mz;
-			} _advanceCorners, _advanceCells;
-
-			/// Computes the Advance for grid-cell corners based on the specified LOD and meta-information singleton
-			static Advance computeAdvanceCorners(const unsigned short nLOD, const Voxel::CubeDataRegionDescriptor & cdrd);
-			/// Computes the Advance for grid-cells based on the specified LOD and meta-information singleton
-			static Advance computeAdvanceCells(const unsigned short nLOD, const Voxel::CubeDataRegionDescriptor & cdrd);
-
 			/** Iterate once 
 			@remarks This iterates once through the corners (defined by a grid-cell) of a voxel-grid.  First all eight 
-				corners of the first grid-cell are iterated through [0-8), then the iteration proceeds to the next 
-				grid-cell in the voxel-grid and iterations proceed through the eight corners of that grid-cell and so
-				on until all grid-cells in the voxel-grid have been visited. */
+				corners of the first grid-cell are iterated through [0-8) utilizing the iterator_Corners class, then the 
+				iteration proceeds to the next grid-cell in the voxel-grid and iterations proceed through the eight corners 
+				of that grid-cell and so on until all grid-cells in the voxel-grid have been visited. */
 			void process();
 
 		public:
-			iterator_GridCells (const unsigned short nLOD, const Voxel::CubeDataRegionDescriptor & cdrd);
+			iterator_GridCells (const unsigned short nLOD, const Voxel::const_DataAccessor & vx, const Voxel::CubeDataRegionDescriptor & cdrd);
 			iterator_GridCells (const iterator_GridCells & copy);
 
 			inline
@@ -425,7 +492,7 @@ namespace Ogre
 
 		/** Acquire an iterator object to the corners of the voxel-grid for each grid-cell reflecting this one 
 		@remarks This does not take into account the current grid-cell position, only the LOD is taken into account. */
-		iterator_GridCells iterate_GridCells () const { return iterator_GridCells(_nLOD, _cubemeta); }
+		iterator_GridCells iterate_GridCells (const Voxel::const_DataAccessor & vxaccess) const { return iterator_GridCells(_nLOD, vxaccess, _cubemeta); }
 
 		/// Bitset for each side of a cube, used to determine triangle winding order
 		const static size_t _triwindflags;
@@ -653,6 +720,14 @@ namespace Ogre
 				y = (unsigned short)idx / _cubemeta.dimensions;
 			}
 
+			struct CaseCodeResult
+			{
+				/// Case code computed
+				NonTrivialTransitionCase::CodeType casecode;
+				/// Whether the computed casecode is trivial or not (entirely solid or entirely empty, no vertices)
+				bool trivial;
+			} casecode(const Voxel::const_DataAccessor & vx) const;	/// Acquire the casecode at this transition cell from the specified voxel grid
+
 			friend Ogre::Log::Stream & operator << (Ogre::Log::Stream &, const TransitionCell &);
 		};
 
@@ -756,10 +831,85 @@ namespace Ogre
 
 		/// Reference-counted shared pointer to the data grid associated with this isosurface.
 		const Voxel::CubeDataRegionDescriptor & _cubemeta;
-		/// A 3D-LUT for the regular cases
-		unsigned char * _vRegularCases;
-		/// A set of 2D-LUTs for the transition cases
-		unsigned short * _vvTrCase[CountOrthogonalNeighbors];
+
+		/// Abstraction for looking-up or generating regular case codes depending on concrete implementation
+		class IRegularCaseLookup
+		{
+		public:
+			virtual NonTrivialRegularCase::CodeType operator [] (const CellIndex index) = 0;
+		};
+
+		/// Abstraction for looking-up or generating transition case codes depending on concrete implementation
+		class ITransitionCaseLookup
+		{
+		public:
+			virtual NonTrivialTransitionCase::CodeType operator () (const OrthogonalNeighbor neighbor, const CellIndex index) = 0;
+		};
+
+		/// Look-up table concrete implementation of a regular case code lookup
+		class RegularCaseCache : public IRegularCaseLookup
+		{
+		private:
+			/// A 3D-LUT for the regular cases
+			NonTrivialRegularCase::CodeType * _vRegularCases;
+
+		public:
+			RegularCaseCache(const HardwareShadow::LOD * pResState, const Voxel::CubeDataRegionDescriptor & cubemeta);
+			~RegularCaseCache();
+
+			NonTrivialRegularCase::CodeType operator [] (const CellIndex index);
+		};
+
+		/// Look-up table concrete implementation of a transition case code lookup
+		class TransitionCaseCache : public ITransitionCaseLookup
+		{
+		private:
+			/// A set of 2D-LUTs for the transition cases
+			NonTrivialTransitionCase::CodeType * _vvTrCase[CountOrthogonalNeighbors];
+
+		public:
+			TransitionCaseCache (const HardwareShadow::LOD * pResState, const Voxel::CubeDataRegionDescriptor & cubemeta);
+			~TransitionCaseCache();
+
+			NonTrivialTransitionCase::CodeType operator () (const OrthogonalNeighbor neighbor, const CellIndex index);
+		};
+
+		/// Look-up table concrete implementation of a regular case code extrapolator
+		class RegularCaseBuilder : public IRegularCaseLookup
+		{
+		private:
+			/// Access to the 3D voxel data grid
+			const Voxel::const_DataAccessor * const _pAccess;
+			/// Current coordinates in the 3D voxel data grid
+			GridCell _gc;
+			/// Business logic for extrapolating the case-code from a cell
+			RegularCaseCodeCompiler _ccc;
+			
+			/// Descriptor of the 3D voxel cube region
+			const Voxel::CubeDataRegionDescriptor & _cdrd;
+
+		public:
+			/**
+			@param lod Level-of-detail determining the size of the cells to extrapolate case codes from
+			@param pAccess Access to the 3D voxel data grid
+			@param cubemeta Descriptor of the 3D voxel cube region */
+			RegularCaseBuilder (const unsigned lod, const Voxel::const_DataAccessor * pAccess, const Voxel::CubeDataRegionDescriptor & cubemeta);
+
+			NonTrivialRegularCase::CodeType operator [] (const CellIndex index);
+		};
+
+		class TransitionCaseBuilder : public ITransitionCaseLookup
+		{
+		private:
+			TransitionCell _tc;
+			const Voxel::const_DataAccessor & _vxaccess;
+
+		public:
+			TransitionCaseBuilder(const unsigned nLOD, const Voxel::const_DataAccessor & vxaccess, const Voxel::CubeDataRegionDescriptor & cubemeta)
+				: _vxaccess(vxaccess), _tc(cubemeta, nLOD, OrthoNaN) {}
+
+			NonTrivialTransitionCase::CodeType operator () (const OrthogonalNeighbor neighbor, const CellIndex index);
+		};
 
 		/// Containers for full-resolution inside, outside, and half-resolution vertices
 		BorderIsoVertexPropertiesVector _vTransInfos3[3];
@@ -1700,9 +1850,6 @@ namespace Ogre
 		/// Adds an iso-triangle to an array in preparation for flushing it to the hardware buffers
 		void addIsoTriangle(const IsoTriangle& isoTriangle);
 
-		/// Populates the 3D/2D case LUTs for the triangulation cases
-		void restoreCaseCache( const HardwareShadow::LOD * pResState );
-
 		/** Performs a ray triangle collision test
 		Tests for ray intersection with a triangle given three isovertex indices and a ray, isovertices must be already configured
 		See the following links for details:
@@ -1749,9 +1896,6 @@ namespace Ogre
 
 		friend Ogre::Log::Stream & operator << (Ogre::Log::Stream &, const GridCell &);
 		friend Ogre::Log::Stream & operator << (Ogre::Log::Stream &, const TransitionCell &);
-
-		virtual WorkQueue::Response* handleRequest( const WorkQueue::Request* req, const WorkQueue* srcQ );
-		virtual void handleResponse( const WorkQueue::Response* res, const WorkQueue* srcQ );
 	};
 
 	Ogre::Log::Stream & operator << (Ogre::Log::Stream & s, const IsoSurfaceBuilder::GridCell & gc);

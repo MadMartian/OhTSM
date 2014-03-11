@@ -47,6 +47,7 @@ namespace Ogre
 	class OverhangTerrainManager;
 	class OverhangTerrainPagedWorldSection;
 	class OverhangTerrainGroup;
+	class OverhangTerrainSlot;
 
 	class IOverhangTerrainPage;
 	class ISerializeCustomData;

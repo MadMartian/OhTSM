@@ -45,12 +45,16 @@ http://www.gnu.org/copyleft/lesser.txt.
 #include "OverhangTerrainManager.h"
 #include "OverhangTerrainPageInitParams.h"
 
+#include "DebugTools.h"
+
 namespace Ogre
 {
 	/** Container for a vertical tile of terrain within a page, also container for meta-fragments */
 	class TerrainTile : public GeneralAllocatedObject
 	{
 	public:
+		/// The owning page section
+		PageSection * const page;
 		/// Flags indicating what borders of the page this terrain-tile touches (if it does at all)
 		const Touch2DSide borders;
 		/// 2D index of the terrain-tile per page

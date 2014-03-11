@@ -39,6 +39,10 @@ http://www.gnu.org/copyleft/lesser.txt.
 #include "MetaFactory.h"
 #include "Util.h"
 #include "OverhangTerrainListener.h"
+#include "TerrainTile.h"
+#include "PageSection.h"
+#include "OverhangTerrainSlot.h"
+#include "OverhangTerrainGroup.h"
 
 namespace Ogre
 {
@@ -132,7 +136,7 @@ namespace Ogre
 			surface->deleteGeometry();
 			_bResetting = false;
 			if (_ridBuilderLast != ~0)
-				factory->base->getIsoSurfaceBuilder()->cancelBuild(_ridBuilderLast);
+				static_cast< Container * > (this) ->tile->page->slot->group->cancelRequest(_ridBuilderLast);
 
 			_ridBuilderLast = ~0;
 			_nLOD_Requested0 = ~0;
@@ -166,14 +170,16 @@ namespace Ogre
 		{
 			oht_assert_threadmodel(ThrMdl_Main);	// Main thread to re-use tracking vars
 			OgreAssert(surface != NULL, "Surface not initialized");
-			IsoSurfaceBuilder * pISB = factory->base->getIsoSurfaceBuilder();
+			Container * self = static_cast< Container * > (this);
 
 			if (_bResetting)
 			{
+				OverhangTerrainGroup * grp = self->tile->page->slot->group;
+
 				surface->deleteGeometry();
 				_bResetting = false;
 				if (_ridBuilderLast != ~0)
-					pISB->cancelBuild(_ridBuilderLast);
+					grp->cancelRequest(_ridBuilderLast);
 
 				_ridBuilderLast = ~0;
 				_nLOD_Requested0 = ~0;
@@ -189,17 +195,23 @@ namespace Ogre
 					surface->populateBuffers(lock.openQueue());
 					return true;
 				} else
-					if (_nLOD_Requested0 != nLOD || _enStitches_Requested0 != enStitches)	// IsoSurfaceBuilder is busy, no data available yet
+				if (_nLOD_Requested0 != nLOD || _enStitches_Requested0 != enStitches)	// IsoSurfaceBuilder is busy, no data available yet
+				{
+					OverhangTerrainGroup * grp = self->tile->page->slot->group;
+					const WorkQueue::RequestID rid = grp->generateSurfaceConfiguration(self, surface, nLOD, enStitches);
+
+					if (rid)
 					{
 						if (_ridBuilderLast != ~0)
-							pISB->cancelBuild(_ridBuilderLast);
+							grp->cancelRequest(_ridBuilderLast);
 
-						_ridBuilderLast = pISB->requestBuild(block, surface, nLOD, enStitches);
+						_ridBuilderLast = rid;
 						_nLOD_Requested0 = nLOD;
 						_enStitches_Requested0 = enStitches;
 					}
+				}
 
-					return false;
+				return false;
 			} else
 				return true;
 		}
@@ -379,10 +391,6 @@ namespace Ogre
 			const unsigned nLOD = surface->getEffectiveRenderLevel();
 			const Touch3DFlags t3dFlags = getNeighborFlags(nLOD);
 
-			// TODO: Breaks contract, potentially applying a mutation in query state.
-			if (_bResetting)
-				generateConfiguration(nLOD, t3dFlags);
-
 			return factory->base->getIsoSurfaceBuilder()
 				->rayQuery(
 					limit,
@@ -525,8 +533,8 @@ namespace Ogre
 		}
 
 
-		Container::Container(RenderManager * pRendMan, const Voxel::MetaVoxelFactory * pFact, Voxel::CubeDataRegion * pDG, const YLevel yl /*= YLevel()*/)
-			: 	Core(pRendMan, pFact, pDG, yl), factory(pFact)
+		Container::Container(RenderManager * pRendMan, const Voxel::MetaVoxelFactory * pFact, TerrainTile * pTile, Voxel::CubeDataRegion * pDG, const YLevel yl /*= YLevel()*/)
+			: 	Core(pRendMan, pFact, pDG, yl), factory(pFact), tile(pTile)
 
 		{
 		}

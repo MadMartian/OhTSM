@@ -161,11 +161,12 @@ namespace Ogre
 			Voxel::CubeDataRegion * createDataGrid (const AxisAlignedBox & bbox) const;
 
 			/** Creates a new meta fragment
+			@param pTile The terrain tile that will own this meta fragment
 			@param bbox World coordinates relative to page position of the bounding region
 			@param yl The y-level relative to terrain tile
 			@returns A new meta-fragment with a new voxel grid / cube region attached to it
 			*/
-			MetaFragment::Container * createMetaFragment (const AxisAlignedBox & bbox = AxisAlignedBox::BOX_NULL, const YLevel yl = YLevel()) const;
+			MetaFragment::Container * createMetaFragment (TerrainTile * pTile, const AxisAlignedBox & bbox = AxisAlignedBox::BOX_NULL, const YLevel yl = YLevel()) const;
 
 			/** Creates a new isosurface renderable
 			@param pMF The meta-fragment to bind the renderable to

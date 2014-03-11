@@ -529,8 +529,11 @@ namespace Ogre
 			/// Factory for creating various channel-specific objects
 			const Voxel::MetaVoxelFactory * const factory;
 
+			/// The owning terrain tile
+			TerrainTile * const tile;
+
 			/// Creates new MetaFragment, as well as IsoSuface and grid as needed.
-			Container(RenderManager * pRendMan, const Voxel::MetaVoxelFactory * pFact, Voxel::CubeDataRegion * pDG, const YLevel yl = YLevel());
+			Container(RenderManager * pRendMan, const Voxel::MetaVoxelFactory * pFact, TerrainTile * pTile, Voxel::CubeDataRegion * pDG, const YLevel yl = YLevel());
 			virtual ~Container();
 
 			template< typename INTERFACE >

@@ -50,7 +50,7 @@ namespace Ogre
 		void DataBasePool::growBy( const size_t nAmt )
 		{
 			for (size_t c = 0; c < nAmt; ++c)
-				_pool.push_front(new DataBase(_nBucketElementCount, _nVRFlags));
+				_pool.push_front(Leasing(new DataBase(_nBucketElementCount, _nVRFlags), boost::this_thread::get_id()));
 		}
 
 		DataBase * DataBasePool::lease()
@@ -60,25 +60,40 @@ namespace Ogre
 			if (_pool.empty())
 				growBy(_nGrowBy);
 
-			DataBase * pDataBase = _pool.front();
-			_leased.push_front(pDataBase);
+			Leasing leaserec = _pool.front();
+
+			leaserec.thid = boost::this_thread::get_id();
+			_leased.push_front(leaserec);
 			_pool.pop_front();
-			return pDataBase;
+			return leaserec.object;
+		}
+
+		bool DataBasePool::isLeased( const DataBase * pDataBase ) const
+		{
+			boost::mutex::scoped_lock lock(_mutex);
+
+			for (DataBaseList::const_iterator i = _leased.begin(); i != _leased.end(); ++i)
+				if (i->object == pDataBase)
+					return true;
+
+			return false;
 		}
 
 		void DataBasePool::retire( const DataBase * pDataBase )
 		{
 			boost::mutex::scoped_lock lock(_mutex);
 
+			auto thid = boost::this_thread::get_id();
+
 			for (DataBaseList::iterator i = _leased.begin(); i != _leased.end(); ++i)
-				if (*i == pDataBase)
+				if (i->object == pDataBase && i->thid == thid)
 				{
 					_pool.push_front(*i);
 					_leased.erase(i);
 					return;
 				}
 
-				throw LeaseEx("Cannot retire object, was not previously leased");
+			throw LeaseEx("Cannot retire object, was not previously leased");
 		}
 
 		DataBasePool::~DataBasePool()
@@ -89,7 +104,15 @@ namespace Ogre
 				throw LeaseEx("Cannot deconstruct factory, there are still some objects checked-out of the pool");
 
 			for (DataBaseList::iterator i = _pool.begin(); i != _pool.end(); ++i)
-				delete *i;
+				delete i->object;
 		}
+
+
+		DataBasePool::Leasing::Leasing( DataBase * pObj, const boost::thread::id & thid ) 
+			: object(pObj), thid(thid)
+		{
+
+		}
+
 	}
 }

@@ -52,7 +52,7 @@ namespace Ogre
 		)
 	),
 	_index2mapMF(descchann), _dirtyMF(descchann), _properties(descchann),
-	_options(opts), _pPage(page), _bInit(false), _bParameterized(false)
+	_options(opts), _pPage(page), page(page->getPublic()), _bInit(false), _bParameterized(false)
 	{
 		for ( int i = 0; i < CountVonNeumannNeighbors; i++ )
 			_vpInternalNeighbors[ i ] = NULL;
@@ -363,7 +363,7 @@ namespace Ogre
 		else
 		{
 			AxisAlignedBox bbox = getYLevelBounds(yl, OCS_World);
-			MetaFragment::Container * pMWF = _pPage->getFactory().getVoxelFactory(channel) ->createMetaFragment(bbox, yl);
+			MetaFragment::Container * pMWF = _pPage->getFactory().getVoxelFactory(channel) ->createMetaFragment(this, bbox, yl);
 			MetaFragment::Interfaces::Unique fragment = pMWF->acquireInterface();
 
 			fragment.addMetaObject(_pPage->getMetaHeightMap());
@@ -553,7 +553,7 @@ namespace Ogre
 
 			for (size_t i = 0; i < nCountMWF; ++i)
 			{
-				pMWF = _pPage->getFactory().getVoxelFactory(channel) ->createMetaFragment();
+				pMWF = _pPage->getFactory().getVoxelFactory(channel) ->createMetaFragment(this);
 				MetaFragment::Interfaces::Builder builder = pMWF->acquireBuilderInterface();
 				MetaFragment::Interfaces::Unique unique = pMWF->acquireInterface();
 				_pPage->fireOnBeforeLoadMetaRegion(channel, &unique);

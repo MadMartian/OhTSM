@@ -34,6 +34,9 @@ namespace Ogre
 {
 	namespace RLE
 	{
+#ifdef _RLECHECK
+	#pragma optimize("", off)
+#endif
 		void Channel::decompress (const size_t nDecompSize, unsigned char * pDest) const
 		{
 			register unsigned int i, j, fb, fh;
@@ -77,10 +80,18 @@ namespace Ogre
 				i >>= 1;
 				if (fh != 0)
 				{
+#ifdef _RLECHECK
+					if (pD + i > pDN)
+						throw BufferOverflowEx("Buffer overflow during decompression memcpy");
+#endif
 					memcpy(pD, pB, i);
 					pB += i;
 				} else
 				{
+#ifdef _RLECHECK
+					if (pD + i > pDN)
+						throw BufferOverflowEx("Buffer overflow during decompression memset");
+#endif
 					memset(pD, *pB++, i);
 				}
 				pD += i;
@@ -220,5 +231,9 @@ namespace Ogre
 			return ins;
 		}
 
+#pragma optimize("", off)
+		BufferOverflowEx::BufferOverflowEx( const char * szMsg ) 
+			: std::exception(szMsg)
+		{}
 	}
 }

@@ -170,26 +170,43 @@ namespace Ogre
 		flags.setParent(this);
 	}
 
+	IsoSurfaceBuilder::TransitionCell::CaseCodeResult IsoSurfaceBuilder::TransitionCell::casecode( const Voxel::const_DataAccessor & vx ) const
+	{
+		CaseCodeResult result;
+		signed short tc8;
+
+		result.casecode = 
+			(
+				signed short
+					( // TODO: Operator [] here is wrong, describes figure 4.16, but requires indexing scheme illustrated in figure 4.17
+					((vx.values[flags[1]] >> 7) & 0x01) |
+					((vx.values[flags[2]] >> 6) & 0x02) |
+					((vx.values[flags[3]] >> 5) & 0x04) |
+					((vx.values[flags[4]] >> 4) & 0x08) |
+					((vx.values[flags[5]] >> 3) & 0x10) |
+					((vx.values[flags[6]] >> 2) & 0x20) |
+					((vx.values[flags[7]] >> 1) & 0x40) |
+					(((tc8 = vx.values[flags[8]]) >> 0) & 0x80)
+				) << 1
+			) | ((signed short (vx.values[flags[0]]) >> 8) & 0x1);
+
+		tc8 <<= 8;
+		result.trivial = (result.casecode ^ ((tc8 >> 15) & 0x1FF)) == 0;
+
+		return result;
+	}
+
 	IsoSurfaceBuilder::IsoSurfaceBuilder(
 		const CubeDataRegionDescriptor & cubemeta,
 		const Channel::Index< ChannelParameters > & chanparams
 	)
 	: 	_cubemeta(cubemeta),
 		_chanparams(chanparams),
-		_vRegularCases(new unsigned char [cubemeta.cellcount]),
 		_pCurrentChannelParams(NULL)
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
 
 		_pMainVtxElems = new MainVertexElements(cubemeta);
-
-		for (unsigned c = 0; c < CountOrthogonalNeighbors; ++c)
-			_vvTrCase[c] = new unsigned short[cubemeta.sidecellcount];
-
-		WorkQueue * pWorkQ = Root::getSingleton().getWorkQueue();
-		_nWorkQChannID = pWorkQ->getChannel("OhTSM/IsoSurfaceBuilder");
-		pWorkQ->addRequestHandler(_nWorkQChannID, this);
-		pWorkQ->addResponseHandler(_nWorkQChannID, this);
 	}
 
 	IsoSurfaceBuilder::ChannelParameters::TransitionCellTranslators * IsoSurfaceBuilder::ChannelParameters::createTransitionCellTranslators( const unsigned short nLODCount, const Real fTCWidthRatio )
@@ -242,9 +259,6 @@ namespace Ogre
 		{ OGRE_LOCK_MUTEX(mMutex);
 			oht_assert_threadmodel(ThrMdl_Main);
 
-			delete [] _vRegularCases;
-			for (unsigned c = 0; c < CountOrthogonalNeighbors; ++c)
-				delete [] _vvTrCase[c];
 			delete _pMainVtxElems;
 
 		}
@@ -258,76 +272,47 @@ namespace Ogre
 			(chanopts.voxelRegionFlags & VRF_TexCoords ? IsoVertexElements::GEN_TEX_COORDS : 0);
 	}
 
-	WorkQueue::Response* IsoSurfaceBuilder::handleRequest( const WorkQueue::Request* req, const WorkQueue* srcQ )
+	void IsoSurfaceBuilder::queueBuild( const MetaFragment::Container * pMF, SharedPtr< HardwareShadow::HardwareIsoVertexShadow > pShadow, const Channel::Ident channel, const unsigned lod, const size_t nSurfaceFlags, const Touch3DFlags enStitches, const size_t nVertexBufferCapacity )
 	{
-		switch (req->getType())
-		{
-		case RT_BuildSurface:
-			{ OGRE_LOCK_MUTEX(mMutex);
-				oht_assert_threadmodel(ThrMdl_Background);
+		{ OGRE_LOCK_MUTEX(mMutex);
+			oht_assert_threadmodel(ThrMdl_Background);
 
-				BuildSurfaceTaskData reqdata = any_cast< BuildSurfaceTaskData > (req->getData());
-				HardwareIsoVertexShadow::ProducerQueueAccess queue = reqdata.shadow->requestProducerQueue(reqdata.lod, reqdata.stitches);
+			HardwareIsoVertexShadow::ProducerQueueAccess queue = pShadow->requestProducerQueue(lod, enStitches);
+				
+			auto fragment = pMF->acquire< MetaFragment::Interfaces::const_Basic >();
 
-				buildImpl(
-#if defined(_DEBUG) || defined(_OHT_LOG_TRACE)
-					reqdata.debugs,
-#endif // _DEBUG
-					reqdata.channel,
-					queue.resolution, reqdata.cubedata, reqdata.shadow, reqdata.surfaceFlags, reqdata.stitches, reqdata.vertexBufferCapacity
-				);
-				fillShadowQueues(queue, reqdata.cubedata->getGridScale());
-			}
-			break;
+	#if defined(_DEBUG) || defined(_OHT_LOG_TRACE)
+			DebugInfo debugs = DebugInfo(fragment.surface);
+	#endif
+
+			buildImpl(
+	#if defined(_DEBUG) || defined(_OHT_LOG_TRACE)
+				debugs,
+	#endif // _DEBUG
+				channel,
+				queue.resolution, fragment.block, pShadow, nSurfaceFlags, enStitches, nVertexBufferCapacity
+			);
+			fillShadowQueues(queue, fragment.block->getGridScale());
 		}
-
-		return new WorkQueue::Response(req, true, Any());
-	}
-
-	void IsoSurfaceBuilder::handleResponse( const WorkQueue::Response* res, const WorkQueue* srcQ ) 
-	{
-	}
-
-	WorkQueue::RequestID IsoSurfaceBuilder::requestBuild( const Voxel::CubeDataRegion * pDataGrid, IsoSurfaceRenderable * pISR, const unsigned nLOD, const Touch3DFlags enStitches )
-	{
-		oht_assert_threadmodel(ThrMdl_Main);
-		BuildSurfaceTaskData reqdata;
-
-		reqdata.cubedata = pDataGrid;
-#if defined(_DEBUG) || defined(_OHT_LOG_TRACE)
-		reqdata.debugs = DebugInfo(pISR);
-#endif // _DEBUG
-		reqdata.shadow = pISR->getShadow();
-		reqdata.channel = pISR->getMetaWorldFragment() ->factory->channel;
-		reqdata.lod = nLOD;
-		reqdata.surfaceFlags = pISR->getMetaWorldFragment() ->factory->surfaceFlags;
-		reqdata.stitches = enStitches;
-		reqdata.vertexBufferCapacity = pISR->getVertexBufferCapacity(nLOD);
-		return Root::getSingleton().getWorkQueue()->addRequest(_nWorkQChannID, RT_BuildSurface, Any(reqdata));
-	}
-
-	void IsoSurfaceBuilder::cancelBuild( const WorkQueue::RequestID & rid )
-	{
-		Root::getSingleton().getWorkQueue()->abortRequest(rid);
 	}
 
 	void IsoSurfaceBuilder::build( const Voxel::CubeDataRegion * pDataGrid, IsoSurfaceRenderable * pISR, const unsigned nLOD, const Touch3DFlags enStitches )
 	{
 		{ OGRE_LOCK_MUTEX(mMutex);
-			HardwareShadow::LOD * pResolution = pISR->getShadow() ->getDirectAccess(nLOD);
+			HardwareIsoVertexShadow::ProducerQueueAccess prodq = pISR->getShadow() ->requestProducerQueue(nLOD, enStitches);
 
 			buildImpl(
 #if defined(_DEBUG) || defined(_OHT_LOG_TRACE)
 				DebugInfo(pISR),
 #endif // _DEBUG
 				pISR->getMetaWorldFragment() ->factory->channel,
-				pResolution, pDataGrid, pISR->getShadow(),
+				prodq.resolution, pDataGrid, pISR->getShadow(),
 				pISR->getMetaWorldFragment() ->factory->surfaceFlags,
 				enStitches, pISR->getVertexBufferCapacity(nLOD)
 			);
 			if (_bResetHWBuffers)
-				pResolution->clearHardwareState();
-			pISR->directlyPopulateBuffers(_pMainVtxElems, pResolution, enStitches, _pMainVtxElems->vertexShipment.size(), _pMainVtxElems->triangles.size() * 3);
+				prodq.resolution->clearHardwareState();
+			pISR->directlyPopulateBuffers(_pMainVtxElems, prodq.resolution, enStitches, _pMainVtxElems->vertexShipment.size(), _pMainVtxElems->triangles.size() * 3);
 		}
 	}
 
@@ -482,7 +467,7 @@ namespace Ogre
 		_pShadow.setNull();
 	}
 
-	std::pair< bool, Real > IsoSurfaceBuilder::rayQuery(
+	std::pair< bool, Real > IsoSurfaceBuilder::rayQuery( 
 		const Real limit,
 		const Channel::Ident channel,
 		const CubeDataRegion * pDataGrid, 
@@ -497,14 +482,13 @@ namespace Ogre
 
 			std::pair< bool, Real > result;
 
-			HardwareIsoVertexShadow::ProducerQueueAccess queue = pShadow->requestProducerQueue(nLOD, highs);
+			HardwareIsoVertexShadow::ReadOnlyAccess ro = pShadow->requestReadOnlyAccess(nLOD);
 
 			_pShadow = pShadow;
-			_pResolution = queue.resolution;
 			const_DataAccessor data = pDataGrid->lease();
 			_enStitches = highs;
 			_nLOD = nLOD;
-			_vCenterIVP = _pResolution->middleIsoVertexProperties;
+			_vCenterIVP = ro.resolution->middleIsoVertexProperties;
 			_pCurrentChannelParams = & _chanparams[channel];
 
 			DiscreteRayIterator walker(ray, Real(1 << nLOD), Vector3::UNIT_SCALE * pDataGrid->getBoxSize().getMinimum() / pDataGrid->getGridScale());
@@ -514,7 +498,24 @@ namespace Ogre
 			NeighborVector neighbors(CountOrthogonalNeighbors);
 
 			_pMainVtxElems->clear();
-			restoreCaseCache(_pResolution);
+
+			SharedPtr< IRegularCaseLookup > pcluReg;
+			SharedPtr< ITransitionCaseLookup > pcluTran;
+			
+			if (ro.resolution->shadowed)
+			{
+				pcluReg.bind(new RegularCaseCache(ro.resolution, _cubemeta));
+				pcluTran.bind(new TransitionCaseCache(ro.resolution, _cubemeta));
+			} else
+			{
+				pcluReg.bind(new RegularCaseBuilder(_nLOD, &data, _cubemeta));
+				pcluTran.bind(new TransitionCaseBuilder(_nLOD, data, _cubemeta));
+			}
+
+			IRegularCaseLookup & cluReg = *pcluReg;
+			ITransitionCaseLookup & cluTran = *pcluTran;
+
+			
 
 			OHTDD_Color(DebugDisplay::MC_Blue);
 
@@ -579,7 +580,7 @@ namespace Ogre
 						tc = gcc;
 						NonTrivialTransitionCase trcase;
 						trcase.cell = tc.index();
-						trcase.casecode = _vvTrCase[*i][trcase.cell];
+						trcase.casecode = cluTran(*i, trcase.cell);
 						computeTransitionVertexMappings(data, trcase, tc);
 						computeTransitionRefinements(
 							data, tc, trcase, 
@@ -624,7 +625,7 @@ namespace Ogre
 
 				NonTrivialRegularCase rgcase;
 				rgcase.cell = gc.index();
-				rgcase.casecode = _vRegularCases[rgcase.cell];
+				rgcase.casecode = cluReg[rgcase.cell];
 				computeRegularRefinements(
 					data, gc, rgcase, 
 					[&](const IsoVertexIndex coarse, const IsoVertexIndex refined, const VoxelIndex c0, const VoxelIndex c1, const unsigned nLOD) 
@@ -727,22 +728,13 @@ namespace Ogre
 		typedef DimensionType DimType;
 		const DimType nResSpan = 1 << _nLOD;
 		NonTrivialRegularCase nontrivialcase;
-		signed char gc7;
 
-		iterator_GridCells i = iterate_GridCells(); 
-		
-		while (i)
+		for (iterator_GridCells i = iterate_GridCells(data); i; ++i)
 		{
-			nontrivialcase.casecode = 0;
+			nontrivialcase.casecode = i->casecode;
 			nontrivialcase.cell = i->gc.index();
 
-			for (unsigned c = 0; c < 8; ++c, ++i)
-			{
-				OgreAssert(i->index == i->gc.corners[c], "Corner index check failed");
-				nontrivialcase.casecode |= (gc7 = (data.values[i->index] >> (8 - 1 - i->corner))) & (1 << i->corner);
-			}
-
-			if ((nontrivialcase.casecode ^ ((gc7 >> 7) & 0xFF)) != 0)
+			if (!i->trivial)
 			{
 				// Cell has a nontrivial triangulation.
 				_pResolution->regCases.push_back(nontrivialcase);
@@ -760,31 +752,16 @@ namespace Ogre
 		typedef DimensionType DimType;
 		const DimType nResSpan = 1 << _nLOD;
 		NonTrivialTransitionCase nontrivialcase;
-		signed short tc8;
 
 		OgreAssert(_pResolution->stitches[on] != NULL, "Transition state was not allocated");
 
 		for (tc.x = 0; tc.x < nDim; tc.x += nResSpan)
 			for (tc.y = 0; tc.y < nDim; tc.y += nResSpan)
 			{
-				nontrivialcase.casecode = 
-					(
-						signed short
-						( // TODO: Operator [] here is wrong, describes figure 4.16, but requires indexing scheme illustrated in figure 4.17
-							((data.values[tc.flags[1]] >> 7) & 0x01) |
-							((data.values[tc.flags[2]] >> 6) & 0x02) |
-							((data.values[tc.flags[3]] >> 5) & 0x04) |
-							((data.values[tc.flags[4]] >> 4) & 0x08) |
-							((data.values[tc.flags[5]] >> 3) & 0x10) |
-							((data.values[tc.flags[6]] >> 2) & 0x20) |
-							((data.values[tc.flags[7]] >> 1) & 0x40) |
-							(((tc8 = data.values[tc.flags[8]]) >> 0) & 0x80)
-						) << 1
-					) | ((signed short (data.values[tc.flags[0]]) >> 8) & 0x1);
-
-				tc8 <<= 8;
-				if ((nontrivialcase.casecode ^ ((tc8 >> 15) & 0x1FF)) != 0)
+				TransitionCell::CaseCodeResult result = tc.casecode(data);
+				if (!result.trivial)
 				{
+					nontrivialcase.casecode = result.casecode;
 					nontrivialcase.cell = tc.index();
 					_pResolution->stitches[on] ->transCases.push_back(nontrivialcase);
 
@@ -1154,12 +1131,6 @@ namespace Ogre
 		ivi = _pMainVtxElems->getRegularVertexIndex(ei, gpc);
 		ci0 = _rgrefiner.getGridIndex0();
 		ci1 = _rgrefiner.getGridIndex1();
-		OgreAssert(
-			((ci0 == _pMainVtxElems->cellindices[ivi].corner0) && (ei == 0 && ci1 != _pMainVtxElems->cellindices[ivi].corner1)) ||
-			((ci1 == _pMainVtxElems->cellindices[ivi].corner1) && (ei == 0 && ci0 != _pMainVtxElems->cellindices[ivi].corner0)) ||
-			((ci1 == _pMainVtxElems->cellindices[ivi].corner1) && (ci0 == _pMainVtxElems->cellindices[ivi].corner0)), 
-			"Corner indicies mismatch check failed"
-		);
 
 		OHT_ISB_DBGTRACE("Refining Regular: VRECaCC=" << vrecacc << ", GC=" << gc << ": ivi=" << ivi << ", resolved EI=" << (int)ei << ", coords pair=<" << ci0 << "x" << ci1 << ">");
 	}
@@ -1218,23 +1189,6 @@ namespace Ogre
 		ci1 = _trrefiner.getGridIndex1();
 
 		OHT_ISB_DBGTRACE("Refining Transition: VRECaCC=" << vrecacc << ", TC=" << tc << ": ivi=" << ivi << ", resolved EI=" << (int)ei << ", coords pair=<" << ci0 << "x" << ci1 << ">");
-	}
-
-#ifdef _DEBUG
-	#pragma optimize("gtpy", on)
-#endif
-	void IsoSurfaceBuilder::restoreCaseCache( const HardwareShadow::LOD * pResState )
-	{
-		memset(_vRegularCases, 0, sizeof(*_vRegularCases) * _cubemeta.cellcount);
-		for (RegularTriangulationCaseList::const_iterator i = pResState->regCases.begin(); i != pResState->regCases.end(); ++i)
-			_vRegularCases[i->cell] = i->casecode;
-
-		for (unsigned s = 0; s < CountOrthogonalNeighbors; ++s)
-		{
-			memset(_vvTrCase[s], 0, sizeof(*_vvTrCase[s]) * _cubemeta.sidecellcount);
-			for (TransitionTriangulationCaseList::const_iterator i = pResState->stitches[s] ->transCases.begin(); i != pResState->stitches[s] ->transCases.end(); ++i)
-				_vvTrCase[s][i->cell] = i->casecode;
-		}
 	}
 
 #ifdef _DEBUG
@@ -2102,7 +2056,7 @@ namespace Ogre
 		corners.setParent(this);
 	}
 
-	IsoSurfaceBuilder::iterator_GridCells::Advance IsoSurfaceBuilder::iterator_GridCells::computeAdvanceCorners(const unsigned short nLOD, const Voxel::CubeDataRegionDescriptor & cdrd)
+	IsoSurfaceBuilder::RegularCaseCodeCompiler::Advance IsoSurfaceBuilder::RegularCaseCodeCompiler::computeAdvanceCorners(const unsigned short nLOD, const Voxel::CubeDataRegionDescriptor & cdrd)
 	{
 		const CubeDataRegionDescriptor::IndexTx t = cdrd.coordsIndexTx;
 		const int cell = 1 << nLOD;
@@ -2115,7 +2069,7 @@ namespace Ogre
 		return advance;
 	}
 
-	IsoSurfaceBuilder::iterator_GridCells::Advance IsoSurfaceBuilder::iterator_GridCells::computeAdvanceCells( const unsigned short nLOD, const Voxel::CubeDataRegionDescriptor & cdrd )
+	IsoSurfaceBuilder::RegularCaseCodeCompiler::Advance IsoSurfaceBuilder::RegularCaseCodeCompiler::computeAdvanceCells( const unsigned short nLOD, const Voxel::CubeDataRegionDescriptor & cdrd )
 	{
 		const CubeDataRegionDescriptor::IndexTx 
 			tr = cdrd.coordsIndexTx;
@@ -2132,58 +2086,106 @@ namespace Ogre
 		return advance;
 	}
 
-	IsoSurfaceBuilder::iterator_GridCells::iterator_GridCells( const unsigned short nLOD, const Voxel::CubeDataRegionDescriptor & cdrd )
-		: _result(GridCell(cdrd, nLOD)), _cdrd(cdrd), _span(1 << nLOD), _advanceCorners(computeAdvanceCorners(nLOD, cdrd)), _advanceCells(computeAdvanceCells(nLOD, cdrd))
+	void IsoSurfaceBuilder::RegularCaseCodeCompiler::process()
+	{
+		signed char gc7;
+		VoxelIndex & index = _result.index;
+		unsigned char & casecode = _result.casecode;
+		unsigned corner;
+
+		casecode = 0;
+		corner = 0;
+
+		step(index, corner, casecode, gc7);
+		corner++;
+		index += advanceCorners.mx;
+		step(index, corner, casecode, gc7);
+		corner++;
+		index += advanceCorners.mx + advanceCorners.my;
+		step(index, corner, casecode, gc7);
+		corner++;
+		index += advanceCorners.mx;
+		step(index, corner, casecode, gc7);
+		corner++;
+		index += advanceCorners.mx + advanceCorners.my + advanceCorners.mz;
+		step(index, corner, casecode, gc7);
+		corner++;
+		index += advanceCorners.mx;
+		step(index, corner, casecode, gc7);
+		corner++;
+		index += advanceCorners.mx + advanceCorners.my;
+		step(index, corner, casecode, gc7);
+		corner++;
+		index += advanceCorners.mx;
+		step(index, corner, casecode, gc7);
+		corner++;
+		index += advanceCorners.mx + advanceCorners.my + advanceCorners.mz;
+
+		_result.trivial = (casecode ^ ((gc7 >> 7) & 0xFF)) == 0;
+	}
+
+	IsoSurfaceBuilder::RegularCaseCodeCompiler::RegularCaseCodeCompiler( const unsigned short nLOD, const Voxel::const_DataAccessor & vx, const Voxel::CubeDataRegionDescriptor & cdrd )
+		: _vxaccess(vx), advanceCorners(computeAdvanceCorners(nLOD, cdrd)), advanceCells(computeAdvanceCells(nLOD, cdrd))
+	{
+	}
+
+	IsoSurfaceBuilder::RegularCaseCodeCompiler::RegularCaseCodeCompiler( const VoxelIndex index, const unsigned short nLOD, const Voxel::const_DataAccessor & vx, const Voxel::CubeDataRegionDescriptor & cdrd ) 
+		: _result(index), _vxaccess(vx), advanceCorners(computeAdvanceCorners(nLOD, cdrd)), advanceCells(computeAdvanceCells(nLOD, cdrd))
+	{
+	}
+
+	IsoSurfaceBuilder::RegularCaseCodeCompiler::RegularCaseCodeCompiler( const RegularCaseCodeCompiler & copy ) 
+		: advanceCorners(copy.advanceCorners), advanceCells(copy.advanceCells), _result(copy._result), _vxaccess(copy._vxaccess)
+	{
+
+	}
+
+	IsoSurfaceBuilder::RegularCaseCodeCompiler::Result::Result( const Result & copy ) 
+		: index(copy.index), casecode(copy.casecode), trivial(copy.trivial)
+	{}
+
+	IsoSurfaceBuilder::RegularCaseCodeCompiler::Result::Result( const VoxelIndex index ) 
+		: index(index), casecode(0), trivial(true)
+	{}
+
+	IsoSurfaceBuilder::RegularCaseCodeCompiler::Result::Result()
+		: index(0), casecode(0), trivial(true)
+	{}
+
+	IsoSurfaceBuilder::RegularCaseCodeCompiler::Result & IsoSurfaceBuilder::RegularCaseCodeCompiler::Result::operator = ( const IsoSurfaceBuilder::RegularCaseCodeCompiler::Result & copy )
+	{
+		index = copy.index;
+		casecode = copy.casecode;
+		trivial = copy.trivial;
+		return *this;
+	}
+
+	IsoSurfaceBuilder::iterator_GridCells::iterator_GridCells( const unsigned short nLOD, const Voxel::const_DataAccessor & vx, const Voxel::CubeDataRegionDescriptor & cdrd )
+		: _result(GridCell(cdrd, nLOD)), _cdrd(cdrd), _span(1 << nLOD), _ccc(nLOD, vx, cdrd)
 	{
 		OHT_CR_INIT();
 		process();
 	}
 
 	IsoSurfaceBuilder::iterator_GridCells::iterator_GridCells( const iterator_GridCells & copy )
-		: _result(copy._result), _span(copy._span), _cdrd(copy._cdrd), _advanceCorners(copy._advanceCorners), _advanceCells(copy._advanceCells), OHT_CR_COPY(copy)
+		: _result(copy._result), _span(copy._span), _cdrd(copy._cdrd), _ccc(copy._ccc), OHT_CR_COPY(copy)
 	{}
 
 	void IsoSurfaceBuilder::iterator_GridCells::process()
 	{
-		VoxelIndex & index = _result.index;
-		size_t & corner = _result.corner;
 		GridCell & gc = _result.gc;
 
 		OHT_CR_START();
 
-		index = 0;
-
-		for (gc.z = 0; gc.z < _cdrd.dimensions; gc.z += _span, index += _advanceCells.mz)
+		for (gc.z = 0; gc.z < _cdrd.dimensions; gc.z += _span, _ccc += _ccc.advanceCells.mz)
 		{
-			for (gc.y = 0; gc.y < _cdrd.dimensions; gc.y += _span, index += _advanceCells.my)
+			for (gc.y = 0; gc.y < _cdrd.dimensions; gc.y += _span, _ccc += _ccc.advanceCells.my)
 			{
-				for (gc.x = 0; gc.x < _cdrd.dimensions; gc.x += _span, index += _advanceCells.mx)
+				for (gc.x = 0; gc.x < _cdrd.dimensions; gc.x += _span, _ccc += _ccc.advanceCells.mx)
 				{
-					corner = 0;
-					OHT_CR_RETURN_VOID(CRS_0);
-					corner++;
-					index += _advanceCorners.mx;
-					OHT_CR_RETURN_VOID(CRS_1);
-					corner++;
-					index += _advanceCorners.mx + _advanceCorners.my;
-					OHT_CR_RETURN_VOID(CRS_2);
-					corner++;
-					index += _advanceCorners.mx;
-					OHT_CR_RETURN_VOID(CRS_3);
-					corner++;
-					index += _advanceCorners.mx + _advanceCorners.my + _advanceCorners.mz;
-					OHT_CR_RETURN_VOID(CRS_4);
-					corner++;
-					index += _advanceCorners.mx;
-					OHT_CR_RETURN_VOID(CRS_5);
-					corner++;
-					index += _advanceCorners.mx + _advanceCorners.my;
-					OHT_CR_RETURN_VOID(CRS_6);
-					corner++;
-					index += _advanceCorners.mx;
-					OHT_CR_RETURN_VOID(CRS_7);
-					corner++;
-					index += _advanceCorners.mx + _advanceCorners.my + _advanceCorners.mz;
+					OgreAssert(_result.gc.corners[0] == _ccc->index, "CaseCodeCompiler and iterator_GridCells out of sync");
+					_result = *(++_ccc);
+					OHT_CR_RETURN_VOID(CRS_Default);
 				}
 			}
 		}
@@ -2197,7 +2199,71 @@ namespace Ogre
 	{}
 
 	IsoSurfaceBuilder::iterator_GridCells::Result::Result( const Result & copy )
-		: gc(copy.gc), index(copy.index), corner(copy.corner)
+		: IsoSurfaceBuilder::RegularCaseCodeCompiler::Result(copy), gc(copy.gc)
 	{}
+
+
+	NonTrivialRegularCase::CodeType IsoSurfaceBuilder::RegularCaseCache::operator[]( const CellIndex index )
+	{
+		return _vRegularCases[index];
+	}
+
+	IsoSurfaceBuilder::RegularCaseCache::RegularCaseCache( const HardwareShadow::LOD * pResState, const CubeDataRegionDescriptor & cubemeta )
+		: _vRegularCases(new NonTrivialRegularCase::CodeType [cubemeta.cellcount])
+	{
+		memset(_vRegularCases, 0, sizeof(*_vRegularCases) * cubemeta.cellcount);
+		for (RegularTriangulationCaseList::const_iterator i = pResState->regCases.begin(); i != pResState->regCases.end(); ++i)
+			_vRegularCases[i->cell] = i->casecode;
+	}
+
+	IsoSurfaceBuilder::RegularCaseCache::~RegularCaseCache()
+	{
+		delete [] _vRegularCases;
+	}
+
+
+	NonTrivialTransitionCase::CodeType IsoSurfaceBuilder::TransitionCaseCache::operator()( const OrthogonalNeighbor neighbor, const CellIndex index )
+	{
+		return _vvTrCase[neighbor][index];
+	}
+
+	IsoSurfaceBuilder::TransitionCaseCache::TransitionCaseCache( const HardwareShadow::LOD * pResState, const CubeDataRegionDescriptor & cubemeta )
+	{
+		for (unsigned s = 0; s < CountOrthogonalNeighbors; ++s)
+		{
+			_vvTrCase[s] = new NonTrivialTransitionCase::CodeType[cubemeta.sidecellcount];
+
+			memset(_vvTrCase[s], 0, sizeof(*_vvTrCase[s]) * cubemeta.sidecellcount);
+			for (TransitionTriangulationCaseList::const_iterator i = pResState->stitches[s] ->transCases.begin(); i != pResState->stitches[s] ->transCases.end(); ++i)
+				_vvTrCase[s][i->cell] = i->casecode;
+		}
+	}
+
+	IsoSurfaceBuilder::TransitionCaseCache::~TransitionCaseCache()
+	{
+		for (unsigned c = 0; c < CountOrthogonalNeighbors; ++c)
+			delete [] _vvTrCase[c];
+	}
+
+
+	NonTrivialRegularCase::CodeType IsoSurfaceBuilder::RegularCaseBuilder::operator[]( const CellIndex index )
+	{
+		_gc = index;
+		_ccc = _cdrd.getGridPointIndex(_gc.x, _gc.y, _gc.z);
+		return (++_ccc)->casecode;
+	}
+
+	IsoSurfaceBuilder::RegularCaseBuilder::RegularCaseBuilder( const unsigned lod, const Voxel::const_DataAccessor * pAccess, const Voxel::CubeDataRegionDescriptor & cubemeta ) 
+		: _pAccess(pAccess), _gc(cubemeta, lod), _ccc(lod, *pAccess, cubemeta), _cdrd(cubemeta)
+	{
+
+	}
+
+	NonTrivialTransitionCase::CodeType IsoSurfaceBuilder::TransitionCaseBuilder::operator()( const OrthogonalNeighbor neighbor, const CellIndex index )
+	{
+		_tc.side = neighbor;
+		_tc = index;
+		return _tc.casecode(_vxaccess).casecode;
+	}
 
 }/// namespace Ogre

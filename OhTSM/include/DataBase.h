@@ -31,7 +31,15 @@ namespace Ogre
 		class _OverhangTerrainPluginExport DataBasePool
 		{
 		private:
-			typedef std::list< DataBase * > DataBaseList;
+			struct Leasing
+			{
+				DataBase * object;
+				boost::thread::id thid;
+
+				Leasing(DataBase * pObj, const boost::thread::id & thid );
+			};
+
+			typedef std::list< Leasing > DataBaseList;
 
 			mutable boost::mutex _mutex;
 
@@ -69,6 +77,8 @@ namespace Ogre
 			DataBase * lease ();
 			/// Check-in an instance
 			void retire (const DataBase * pDataBase);
+			/// Check if an object is already leased
+			bool isLeased (const DataBase * pDataBase) const;
 
 			~DataBasePool();
 		};

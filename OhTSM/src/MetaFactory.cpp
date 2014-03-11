@@ -98,10 +98,10 @@ namespace Ogre
 			return base->createCubeDataRegion(_chanopts.voxelRegionFlags, pool, bbox);
 		}
 
-		MetaFragment::Container * MetaVoxelFactory::createMetaFragment( const AxisAlignedBox & bbox /* = AxisAlignedBox::BOX_NULL*/, const YLevel yl /*= YLevel()*/ ) const
+		MetaFragment::Container * MetaVoxelFactory::createMetaFragment( TerrainTile * pTile, const AxisAlignedBox & bbox /*= AxisAlignedBox::BOX_NULL*/, const YLevel yl /*= YLevel()*/ ) const
 		{
 			//OHT_DBGTRACE("pos=" << pt << ", y-level=" << yl);
-			return new MetaFragment::Container(this->base->renderman, this, createDataGrid(bbox), yl);
+			return new MetaFragment::Container(this->base->renderman, this, pTile, createDataGrid(bbox), yl);
 		}
 
 		IsoSurfaceRenderable * MetaVoxelFactory::createIsoSurfaceRenderable( MetaFragment::Container * const pMWF, const String & sName ) const

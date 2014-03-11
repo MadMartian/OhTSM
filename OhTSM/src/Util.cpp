@@ -38,6 +38,8 @@ Torus Knot Software Ltd.
 
 #include "OverhangTerrainManager.h"
 
+#include "DebugTools.h"
+
 unsigned long long computeCRCImpl( const unsigned long long * pData, const size_t nQWords )
 {
 	unsigned long long v = 0;

@@ -160,6 +160,7 @@ namespace Ogre
 	void DynamicRenderable::wipeBuffers()
 	{
 		oht_assert_threadmodel(ThrMdl_Single);
+		// TODO: Is this necessary now that we employ latent render operations?
 		_renderOp.vertexData->vertexBufferBinding->unsetAllBindings();
 		for (size_t l = 0; l < getNumLevels(); ++l)
 		{
