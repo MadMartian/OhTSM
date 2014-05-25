@@ -67,8 +67,8 @@ namespace Ogre
 
 		// Determines if there is index data for the specified level of detail and stitch configuration
 		bool isConfigurationBuilt (const unsigned nLOD, const size_t nStitchFlags) const;
-		/// Available current storage capacity in the hardware buffer for the specified LOD
-		size_t getVertexBufferCapacity(const unsigned nLOD) const;
+		/// Available current storage capacity in the hardware buffer
+		size_t getVertexBufferCapacity() const;
 
 		inline const LightList& /*SimpleRenderable::*/getLights(void) const
 			{ return queryLights(); }
@@ -84,7 +84,7 @@ namespace Ogre
 		class MeshData
 		{
 		private:
-			MeshData (const MeshData & ); // Copy not allowed because VertexData copy is not allowed
+			MeshData (const MeshData & ); // Copy not allowed
 
 		public:
 			/** Defines triangle index data according to a stitch configuration */
@@ -120,39 +120,6 @@ namespace Ogre
 			/// Maps stitch configuration to Index objects (see above)
 			IndexDataMap indices;
 
-			/** Defines a hardware vertex buffer used by this renderable */
-			class VertexData
-			{
-			private:
-				/// The hardware vertex buffer
-				HardwareVertexBufferSharedPtr _buffer;
-				/// Current capacity of, element count, and element size of the hardware vertex buffer
-				size_t _capacity, _count, _elemsize;
-
-			public:
-				VertexData(VertexDeclaration * pVtxDecl);
-				VertexData(const VertexData & copy); // Does not copy the hardware vertex buffer, only references it
-				VertexData(VertexData && move);
-				~VertexData();
-
-				/// Destroys the hardware vertex buffer
-				virtual void clear();
-				/// Ensures minimum capacity of the hardware vertex buffer creating a newer bigger one if necessary
-				bool prepare(const size_t nVertexCount);
-
-				/// Determines if the hardware vertex buffer is empty or not
-				bool isEmpty () { return _buffer.isNull(); }
-				/// Current number of vertices stored in the hardware buffer
-				size_t getCount() const { return _count; }
-				/// Actual capacity of the hardware buffer (element count, not byte size)
-				size_t getCapacity() const { return _capacity; }
-				/// Retrieve the hardware vertex buffer
-				HardwareVertexBufferSharedPtr getVertexBuffer () { return _buffer; }
-
-				// Copy the object, does not copy the hardware vertex buffer, only references it
-				VertexData & operator = (const VertexData & copy);
-			} vertices;
-
 			MeshData (MeshData && move);
 			MeshData (VertexDeclaration * pVtxDecl);
 			~MeshData();
@@ -162,6 +129,39 @@ namespace Ogre
 			
 			/// Destroys all hardware buffers
 			virtual void clear();
+		};
+
+		/** Defines a hardware vertex buffer used by this renderable */
+		class SurfaceVertexData
+		{
+		private:
+			/// The hardware vertex buffer
+			HardwareVertexBufferSharedPtr _buffer;
+			/// Current capacity of, element count, and element size of the hardware vertex buffer
+			size_t _capacity, _count, _elemsize;
+
+		public:
+			SurfaceVertexData(VertexDeclaration * pVtxDecl);
+			SurfaceVertexData(const SurfaceVertexData & copy); // Does not copy the hardware vertex buffer, only references it
+			SurfaceVertexData(SurfaceVertexData && move);
+			~SurfaceVertexData();
+
+			/// Destroys the hardware vertex buffer
+			virtual void clear();
+			/// Ensures minimum capacity of the hardware vertex buffer creating a newer bigger one if necessary
+			bool prepare(const size_t nVertexCount);
+
+			/// Determines if the hardware vertex buffer is empty or not
+			bool isEmpty () { return _buffer.isNull(); }
+			/// Current number of vertices stored in the hardware buffer
+			size_t getCount() const { return _count; }
+			/// Actual capacity of the hardware buffer (element count, not byte size)
+			size_t getCapacity() const { return _capacity; }
+			/// Retrieve the hardware vertex buffer
+			HardwareVertexBufferSharedPtr getVertexBuffer () { return _buffer; }
+
+			// Copy the object, does not copy the hardware vertex buffer, only references it
+			SurfaceVertexData & operator = (const SurfaceVertexData & copy);
 		};
 
 	private:
@@ -176,6 +176,9 @@ namespace Ogre
 		/// An array of MeshData object pointers indexed by LOD
 		MeshData ** _pvMeshData;
 
+		/// The vertex data for all vertices owned by this surface
+		SurfaceVertexData * _pVertexData;
+
 		/// The vertex declaration used by all hardware buffers here
 		VertexDeclaration * const _pVtxDecl;
 
@@ -188,18 +191,17 @@ namespace Ogre
 
 		/// Ensures minimum capacity (index count) of the hardware index buffer linked by the specified LOD and stitch configuration
 		bool prepareIndexBuffer(const unsigned nLOD, const size_t nStitchFlags, const size_t indexCount);
-		/** Ensures minimum capacity (vertex element count) of the hardware vertex buffer linked by the specified LOD
-		@param nLOD The LOD used to retrieve the associated hardware vertex buffer
+		/** Ensures minimum capacity (vertex element count) of the hardware vertex buffer
 		@param nVtxCount The minimum capacity of the hardware vertex buffer even if it has to create a newer bigger buffer
 		@param bClearIndicesToo Force erasure of all hardware index buffers used by the specified LOD
 		*/
-		bool prepareVertexBuffer(const unsigned nLOD, const size_t nVtxCount, bool bClearIndicesToo );
+		bool prepareVertexBuffer(const size_t nVtxCount, bool bClearIndicesToo );
 
 		/// Retrieves the index and vertex data for the specified level of detail with specified stitch configuration
-		virtual std::pair< MeshData::VertexData *, MeshData::Index * > getMeshData( const int nLOD, const size_t nStitchFlags );
+		virtual MeshData::Index * getIndexData( const int nLOD, const size_t nStitchFlags );
 
 		/// Retrieves the hardware buffer vertex data for the specified LOD
-		MeshData::VertexData * getVertexData (const unsigned nLOD);
+		SurfaceVertexData * getVertexData ();
 
 		/// Erases all index and vertex buffers in preparation for creating brand new ones
 		virtual void wipeBuffers ();

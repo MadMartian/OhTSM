@@ -1277,6 +1277,55 @@ namespace Ogre
 		}
 	}
 
+	namespace RoleSecureFlag
+	{
+		/// Interface for setting the flag (turning it on)
+		class ISetFlag
+		{
+		public:
+			virtual bool operator ++ () = 0;
+		};
+
+		/// Interface for reading the flag (query)
+		class IReadFlag
+		{
+		public:
+			virtual operator bool () const = 0;
+			virtual bool operator ! () const = 0;
+		};
+
+		/// Interface for clearing the flag (turning it off)
+		class IClearFlag : public IReadFlag
+		{
+		public:
+			virtual bool operator -- () = 0;
+		};
+
+		class Flag : protected ISetFlag, IClearFlag
+		{
+		private:
+			bool _flag;
+
+		protected:
+			operator bool () const;
+			bool operator ! () const;
+			bool operator -- ();
+			bool operator ++ ();
+
+			template< typename INTERFACE > INTERFACE * queryInterface ()
+			{
+				static_assert(false, "Method implementation not found");
+			}
+			template<> IClearFlag * queryInterface <IClearFlag> () { return this; }
+			template<> IReadFlag * queryInterface <IReadFlag> () { return this; }
+			template<> ISetFlag * queryInterface <ISetFlag> () { return this; }
+
+		public:
+			Flag();
+			virtual ~Flag();
+		};
+	}
+
 	class BitSet
 	{
 	private:

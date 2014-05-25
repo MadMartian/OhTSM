@@ -195,7 +195,7 @@ namespace Ogre
 			const DebugInfo & debugs,
 #endif // _DEBUG
 			const Channel::Ident channel,
-			HardwareShadow::LOD * pResolution,
+			HardwareShadow::MeshOperation * pMeshOp,
 			const Voxel::CubeDataRegion * pDataGrid, 
 			SharedPtr< HardwareShadow::HardwareIsoVertexShadow > & pShadow, 
 			const size_t nSurfaceFlags,
@@ -805,8 +805,8 @@ namespace Ogre
 		/// Represents the state of the hardware buffer of the currently associated surface
 		SharedPtr< HardwareShadow::HardwareIsoVertexShadow > _pShadow;
 
-		/// Represents the LOD-specific state of the shadow
-		HardwareShadow::LOD * _pResolution;
+		/// Represents the LOD-specific state of the shadow and access to the vertices shared by all resolutions
+		HardwareShadow::MeshOperation * _pMeshOp;
 
 		/// Keeps track of the current position in the hardware vertex buffer
 		size_t _nHWBufPos;

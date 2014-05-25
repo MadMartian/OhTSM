@@ -68,13 +68,12 @@ namespace Ogre
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
 
-		prepareVertexBuffer(queue.resolution->lod, queue.requiredVertexCount(), queue.resolution->isResetHWBuffers());
-		queue.resolution->clearResetHWBuffersFlag();
-		prepareIndexBuffer(queue.resolution->lod, queue.stitches, queue.indexQueue.size());
-		auto pair = getMeshData(queue.resolution->lod, queue.stitches);		
+		// TODO: Check return value of prepare vertex buffer call
+		prepareVertexBuffer(queue.requiredVertexCount(), queue.resetHWBuffers);
+		prepareIndexBuffer(queue.meshOp.resolution->lod, queue.stitches, queue.indexQueue.size());
 
-		HardwareVertexBufferSharedPtr pVtxBuffer = pair.first->getVertexBuffer();
-		HardwareIndexBufferSharedPtr pIdxBuffer = pair.second->getIndexData()->indexBuffer;
+		HardwareVertexBufferSharedPtr pVtxBuffer = getVertexData()->getVertexBuffer();
+		HardwareIndexBufferSharedPtr pIdxBuffer = getIndexData(queue.meshOp.resolution->lod, queue.stitches)->getIndexData()->indexBuffer;
 
 		const MetaVoxelFactory::VertexDeclarationElements * pVtxDeclElems = _pMWF->factory->getVertexDeclarationElements();
 		const size_t nVertexByteSize = _pMWF->factory->getVertexSize();
@@ -143,17 +142,15 @@ namespace Ogre
 #ifdef _DEBUG
 #pragma optimize("gtpy", on)
 #endif
-	void IsoSurfaceRenderable::directlyPopulateBuffers( IsoVertexElements * pVtxElems, HardwareShadow::LOD * pResolution, const Touch3DFlags enStitches, const size_t nNewVertexCount, const size_t nIndexCount )
+	void IsoSurfaceRenderable::populateBuffers( IsoVertexElements * pVtxElems, HardwareShadow::HardwareIsoVertexShadow::DirectAccess & direct, const bool bResetHWBuffers, const size_t nNewVertexCount, const size_t nIndexCount )
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
 
-		prepareVertexBuffer(pResolution->lod, nNewVertexCount + pResolution->getHWIndexBufferTail(), pResolution->isResetHWBuffers());
-		pResolution->clearResetHWBuffersFlag();
-		prepareIndexBuffer(pResolution->lod, enStitches, nIndexCount);
-		auto pair = getMeshData(pResolution->lod, enStitches);		
+		prepareVertexBuffer(nNewVertexCount + direct.meshOp.nextVertexIndex(), bResetHWBuffers);
+		prepareIndexBuffer(direct.meshOp.resolution->lod, direct.stitches, nIndexCount);
 		const MetaVoxelFactory::VertexDeclarationElements * const pVtxDeclElems = _pMWF->factory->getVertexDeclarationElements();
-		HardwareVertexBufferSharedPtr pVtxBuffer = pair.first->getVertexBuffer();
-		HardwareIndexBufferSharedPtr pIdxBuffer = pair.second->getIndexData()->indexBuffer;
+		HardwareVertexBufferSharedPtr pVtxBuffer = getVertexData()->getVertexBuffer();
+		HardwareIndexBufferSharedPtr pIdxBuffer = getIndexData(direct.meshOp.resolution->lod, direct.stitches) ->getIndexData()->indexBuffer;
 
 		const size_t nVertexByteSize = _pMWF->factory->getVertexSize();
 		const float fVertScale =
@@ -167,7 +164,7 @@ namespace Ogre
 		{
 			unsigned char * pOffset = static_cast< unsigned char * > (
 				pVtxBuffer->lock(
-					pResolution->getHWIndexBufferTail() * nVertexByteSize,
+					direct.meshOp.nextVertexIndex() * nVertexByteSize,
 					pVtxElems->vertexShipment.size() * nVertexByteSize,
 					HardwareBuffer::HBL_DISCARD
 				)
@@ -224,7 +221,7 @@ namespace Ogre
 			pIdxBuffer->unlock();
 		}
 
-		pResolution->updateHardwareState(enStitches, pVtxElems->vertexShipment.begin(), pVtxElems->vertexShipment.end());
+		direct.revmapIVI2HWVIQueue = pVtxElems->vertexShipment;
 		pVtxElems->vertexShipment.clear();
 	}
 
@@ -233,7 +230,7 @@ namespace Ogre
 		oht_assert_threadmodel(ThrMdl_Main);
 
 		wipeBuffers();
-		_pShadow->clear(); // TODO: Can potentially block
+		_pShadow->clearBuffers(IBufferManager::BD_Shadow); // TODO: Can potentially block
 	}
 
 	void /*SimpleRenderable::*/ IsoSurfaceRenderable::getRenderOperation( RenderOperation& op )
@@ -242,17 +239,16 @@ namespace Ogre
 
 		DynamicRenderable::getRenderOperation(op);
 
-		MeshData::VertexData * pVtxDataUse = _vtxdata0.isEmpty() ? NULL : &_vtxdata0;
+		SurfaceVertexData * pVtxDataUse = _vtxdata0.isEmpty() ? NULL : &_vtxdata0;
 		MeshData::Index * pIdxUse = _idx0.isEmpty() ? NULL : &_idx0;
 
 		if ((_lod != _lod0 || _t3df != _t3df0) && _pRendMan->queue(getRenderQueueGroup()) ->isCurrentRenderStateAvailable() && isConfigurationBuilt(_lod, _t3df))
 		{
-			auto & pair = getMeshData(_lod, _t3df);
-			pVtxDataUse = pair.first;
-			pIdxUse = pair.second;
+			pVtxDataUse = getVertexData();
+			pIdxUse = getIndexData(_lod, _t3df);
 
-			_vtxdata0 = *pair.first;
-			_idx0 = *pair.second;
+			_vtxdata0 = *pVtxDataUse;
+			_idx0 = *pIdxUse;
 
 			_lod0 = _lod;
 			_t3df0 = _t3df;
@@ -314,14 +310,14 @@ namespace Ogre
 		DynamicRenderable::wipeBuffers();
 		_t3df0 = T3DS_None;
 		_lod0 = -1;
-		_pShadow->reset(); // TODO: Can potentially block
+		_pShadow->clearBuffers(); // TODO: Can potentially block
 	}
 
-	bool IsoSurfaceRenderable::prepareVertexBuffer( const unsigned nLOD, const size_t vertexCount, bool bClearIndicesToo )
+	bool IsoSurfaceRenderable::prepareVertexBuffer( const size_t vertexCount, bool bClearIndicesToo )
 	{
 		_t3df0 = T3DS_None;
 		_lod0 = -1;
-		return DynamicRenderable::prepareVertexBuffer(nLOD, vertexCount, bClearIndicesToo);
+		return DynamicRenderable::prepareVertexBuffer(vertexCount, bClearIndicesToo);
 	}
 
 	void IsoSurfaceRenderable::detachFromParent( void )

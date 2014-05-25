@@ -97,16 +97,17 @@ namespace Ogre
 		void populateBuffers( HardwareShadow::HardwareIsoVertexShadow::ConsumerLock::QueueAccess & queue );
 		/** Populate the hardware buffers synchronously from a recently completed IsoSurfaceBuilder execution
 		@param pVtxElems The buffer containing vertex information supplied by the IsoSurfaceBuilder
-		@param pResolution The LOD information describing the buffered vertex data
+		@param direct Direct access to the shadow data
+		@param bResetHWBuffers Whether the hardware buffers should be reset prior to populating
 		@param enStitches The stitch flags associated with the vertex data identifying the surface configuration in tandem with LOD
 		@param nNewVertexCount Number of new vertices to be appended to the vertex buffer
 		@param nIndexCount Total number of triangle vertex indices to be flushed */
-		void directlyPopulateBuffers( IsoVertexElements * pVtxElems, HardwareShadow::LOD * pResolution, const Touch3DFlags enStitches, const size_t nNewVertexCount, const size_t nIndexCount );
+		void populateBuffers( IsoVertexElements * pVtxElems, HardwareShadow::HardwareIsoVertexShadow::DirectAccess & direct, const bool bResetHWBuffers, const size_t nNewVertexCount, const size_t nIndexCount );
 		/// Deletes all hardware buffers and the shadow object
 		void deleteGeometry();
 
 	protected:
-		virtual bool prepareVertexBuffer( const unsigned nLOD, const size_t vertexCount, bool bClearIndicesToo );
+		virtual bool prepareVertexBuffer( const size_t vertexCount, bool bClearIndicesToo );
 		virtual void computeMinimumLevels2Distances (const Real & fErrorFactorSqr, Real * pfMinLev2DistSqr, const size_t nCount);
 		virtual void setDeltaBinding (const int nLevel)
 		{
@@ -133,7 +134,7 @@ namespace Ogre
 		/// Keeps track of the most recent render operation used
 		MeshData::Index _idx0;
 		/// Keeps track of the most recent render operation used
-		MeshData::VertexData _vtxdata0;
+		SurfaceVertexData _vtxdata0;
 
 #ifdef _DISPDBG
 		bool _bBoxDisplay;

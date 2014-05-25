@@ -47,6 +47,7 @@ namespace Ogre
 	)
 	:	LODRenderable(nLODLevels, fPixelError, false, 0, sName),
 		_pVtxDecl(pVtxDecl), _pVtxBB(HardwareBufferManager::getSingletonPtr() ->createVertexBufferBinding()),
+		_pVertexData(new SurfaceVertexData(pVtxDecl)),
 		_txWorld(Matrix4::IDENTITY),
 		_pvMeshData(new MeshData * [nLODLevels])
 	{
@@ -68,6 +69,7 @@ namespace Ogre
 		for (unsigned c = 0; c < _nLODCount; ++c)
 			delete _pvMeshData[c];
 		delete [] _pvMeshData;
+		delete _pVertexData;
 		HardwareBufferManager::getSingletonPtr() ->destroyVertexBufferBinding(_pVtxBB);
 	}
 
@@ -90,31 +92,33 @@ namespace Ogre
 		return true;
 	}
 
-	std::pair< DynamicRenderable::MeshData::VertexData *, DynamicRenderable::MeshData::Index * > 
-	DynamicRenderable::getMeshData( const int nLOD, const size_t nStitchFlags )
+	DynamicRenderable::MeshData::Index * DynamicRenderable::getIndexData( const int nLOD, const size_t nStitchFlags )
 	{
 		OgreAssert(_pvMeshData[nLOD] != NULL, "Resolution doesn't exist");
-		return std::pair< DynamicRenderable::MeshData::VertexData *, DynamicRenderable::MeshData::Index * > 
-			(& _pvMeshData[nLOD] ->vertices, & _pvMeshData[nLOD] ->indices[nStitchFlags]);
+		return & _pvMeshData[nLOD] ->indices[nStitchFlags];
 	}
 
-	DynamicRenderable::MeshData::VertexData * DynamicRenderable::getVertexData( const unsigned nLOD )
+	DynamicRenderable::SurfaceVertexData * DynamicRenderable::getVertexData( )
 	{
-		OgreAssert(_pvMeshData[nLOD] != NULL, "LOD buffer doesn't exist");
-		return & _pvMeshData[nLOD] ->vertices;
+		return _pVertexData;
 	}
 
-	bool DynamicRenderable::prepareVertexBuffer( const unsigned nLOD, const size_t nVtxCount, bool bClearIndicesToo )
+	bool DynamicRenderable::prepareVertexBuffer( const size_t nVtxCount, bool bClearIndicesToo )
 	{
 		oht_assert_threadmodel(ThrMdl_Single);
 
-		if (_pvMeshData[nLOD] == NULL)
-			_pvMeshData[nLOD] = new MeshData(_pVtxDecl);
-		
-		bool bPrepareResult = _pvMeshData[nLOD] ->vertices.prepare(nVtxCount);
+		bool bPrepareResult = _pVertexData->prepare(nVtxCount);
 
 		if (bClearIndicesToo || !bPrepareResult)
-			_pvMeshData[nLOD] ->indices.clear();
+		{
+			for (size_t l = 0; l < getNumLevels(); ++l)
+			{
+				MeshData * pMeshData = _pvMeshData[l];
+
+				if (pMeshData != NULL)
+					pMeshData->clear();
+			}
+		}
 
 		return bPrepareResult && !bClearIndicesToo;
 	}
@@ -169,24 +173,20 @@ namespace Ogre
 			if (pMeshData != NULL)
 				pMeshData->clear();
 		}
+
+		_pVertexData->clear();
 	}
 
-	size_t DynamicRenderable::getVertexBufferCapacity( const unsigned nLOD ) const
+	size_t DynamicRenderable::getVertexBufferCapacity() const
 	{
-		const MeshData * pMeshData = _pvMeshData[nLOD];
-
-		if (pMeshData == NULL)
-			return 0;
-		else
-			return pMeshData->vertices.getCapacity();
+		return _pVertexData->getCapacity();
 	}
 
 	DynamicRenderable::MeshData::MeshData(VertexDeclaration * pVtxDecl) 
-		: vertices(pVtxDecl)
 	{}
 
 	DynamicRenderable::MeshData::MeshData( DynamicRenderable::MeshData && move ) 
-		: indices(move.indices), vertices(static_cast< DynamicRenderable::MeshData::VertexData && > (move.vertices))
+		: indices(move.indices)
 	{}
 
 	DynamicRenderable::MeshData::~MeshData()
@@ -195,7 +195,6 @@ namespace Ogre
 	void DynamicRenderable::MeshData::clear()
 	{
 		indices.clear();
-		vertices.clear();
 	}
 
 	bool DynamicRenderable::MeshData::prepareIndexBuffer( const size_t nStitchFlags, const size_t nIndexCount )
@@ -273,16 +272,16 @@ namespace Ogre
 	{
 	}
 
-	DynamicRenderable::MeshData::VertexData::VertexData(VertexDeclaration * pVtxDecl) 
+	DynamicRenderable::SurfaceVertexData::SurfaceVertexData(VertexDeclaration * pVtxDecl) 
 		: _capacity(0), _count(0), _elemsize(pVtxDecl->getVertexSize(0)) {}
 
-	DynamicRenderable::MeshData::VertexData::VertexData( const VertexData & copy )
+	DynamicRenderable::SurfaceVertexData::SurfaceVertexData( const SurfaceVertexData & copy )
 		: _buffer(copy._buffer), _capacity(copy._capacity), _count(copy._count), _elemsize(copy._elemsize) {}
 
-	DynamicRenderable::MeshData::VertexData::VertexData( VertexData && move )
+	DynamicRenderable::SurfaceVertexData::SurfaceVertexData( SurfaceVertexData && move )
 		: _buffer(move._buffer), _capacity(move._capacity), _count(move._count), _elemsize(move._elemsize) {}
 
-	DynamicRenderable::MeshData::VertexData & DynamicRenderable::MeshData::VertexData::operator = ( const VertexData & copy )
+	DynamicRenderable::SurfaceVertexData & DynamicRenderable::SurfaceVertexData::operator = ( const SurfaceVertexData & copy )
 	{
 		_buffer = copy._buffer;
 		_capacity = copy._capacity;
@@ -291,9 +290,9 @@ namespace Ogre
 		return *this;
 	}
 
-	DynamicRenderable::MeshData::VertexData::~VertexData() {}
+	DynamicRenderable::SurfaceVertexData::~SurfaceVertexData() {}
 
-	bool DynamicRenderable::MeshData::VertexData::prepare( const size_t nVertexCount )
+	bool DynamicRenderable::SurfaceVertexData::prepare( const size_t nVertexCount )
 	{
 		bool bResized = false;
 
@@ -322,7 +321,7 @@ namespace Ogre
 		return !bResized;
 	}
 
-	void DynamicRenderable::MeshData::VertexData::clear()
+	void DynamicRenderable::SurfaceVertexData::clear()
 	{
 		_capacity = 
 		_count = 0;

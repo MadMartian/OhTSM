@@ -48,12 +48,6 @@ namespace Ogre
 		/** IsoSurfaceRenderable shadow meta data container for data pertinent to a specific LOD */
 		class LOD
 		{
-		private:
-			/// Maps logical isovertex indices to their hardware vertex index counterparts
-			IsoVertexVector _revmapIVI2HWVI;
-			/// Flag to indicate to the main thread whether the hardware buffers should be reset immediately before render
-			bool _bRollbackHWBuffers;
-
 		public:
 			/** IsoSurfaceRenderable shadow meta data container for data pertinent to a specific LOD 
 				and multi-resolution stitching configuration for a particular side of the cube voxel region */
@@ -96,41 +90,65 @@ namespace Ogre
 			/// Define a configuration for the specified LOD
 			LOD(const unsigned nLOD);
 			~LOD();
+		};
+
+		/** Simply houses shadow information for the vertices shared by all LODs and LOD configurations */
+		class Vertices
+		{
+		public:
+			/// Maps logical isovertex indices to their hardware vertex index counterparts
+			IsoVertexVector revmapIVI2HWVI;
+		};
+
+		/** Houses the algorithm for clearing the shadow and GPU buffers */
+		class IBufferManager
+		{
+		public:
+			enum BufferDepth
+			{
+				BD_Shadow = 1,		// Clears everything, both GPU and shadow
+				BD_GPU = 1 | 2		// Clears GPU only, shadow is left alone
+			};
+
+			/** Clears either the GPU, shadow, or both for all resolutions
+ 			 * @param depth Indicates how deep to clear */
+			virtual void clear(const BufferDepth depth) = 0;
+
+			/** Clears either the GPU, shadow, or both for a specific resolution
+ 			 * @param depth Indicates how deep to clear
+			 * @param nLOD The level of detail for which to clear information */
+			virtual void clear(const BufferDepth depth, signed nLOD) = 0;
+		};
+
+		/** Houses the vertex and triangle data necessary for batching a single mesh operation to the hardware buffers */
+		class MeshOperation
+		{
+		private:
+			IBufferManager * _pBuffMan;
+
+		public:
+			// Indicates how deep to clear the buffers (currently only used for the clear method)
+			/// The LOD and meta data for the rendered surface
+			LOD * const resolution;
+			/// The vertices shared by all configurations
+			Vertices * const vertices;
+
+			/// Initializes the members
+			MeshOperation(LOD * pResolution, Vertices * pVertices, IBufferManager * pBuffMan);
+
+			/** Clears either the GPU, shadow, or both
+			 * @param depth Indicates how deep to clear */
+			void clear(const IBufferManager::BufferDepth depth);
 
 			/// Returns the next hardware vertex buffer index for new vertices that would be appended to the buffer
-			size_t getHWIndexBufferTail() const { return _revmapIVI2HWVI.size(); }
+			size_t nextVertexIndex() const { return vertices->revmapIVI2HWVI.size(); }
 			/// Populates the specified map of isovertex indices to hardware vertex buffer indices from that stored in this object
 			void restoreHWIndices(HWVertexIndex * mapIVI2HWVI);
-			/// Batch-map the specified set of isovertex indices to new hardware vertex buffer indices
-			void addHWIndices(const IsoVertexVector::const_iterator begin, const IsoVertexVector::const_iterator end);
-			/// Determines if the hardware buffers should be reset in the main thread immediately before render
-			bool isResetHWBuffers() const { return _bRollbackHWBuffers; }
-			/// Clears the hardware vertex buffer reset flag, which is done immediately after the buffers are cleared and before render
-			void clearResetHWBuffersFlag() { _bRollbackHWBuffers = false; }
 
-			/** Resets all data stored in this cache
-			@remarks Clears the following pieces of information:
-			- Regular and transition triangulation case lists
-			- Transition cell vertex property lists
-			- Isovertex to hardware vertex buffer index map
-			- Clears all flags except for...
-			- Sets the flag signaling that the hardware buffers should be reset in the main thread
-			- Resets all flags of each stitch configuration object
-			*/
-			void clearAll();
-			/** Clears the flags, for both this object and its stitch configuration objects,
-				indicating that associated triangles have been batched to the GPU, and sets the flag 
-				indicating that the hardware buffers should be reset in the main thread */
-			void clearHardwareState();
-
-			/** Sets the flags indicating that associated triangles have just been batched to the GPU
-			@remarks Sets the flags for both this object and the relevant stitch configuration objects that triangles have been batched.
-				Also maps (appends) the specified isovertex indices to hardware vertex buffer indices
-			@param enStitches Flags identifying whitch stitch configuration objects have been updated and to set the gpued flag for
-			@param beginRevMapIVI2HWVI Iterator pattern pointer to beginning of isovertex indices to map to hardware vertex buffer indices
-			@param endRevMapIVI2HWVI Iterator pattern pointer to end of isovertex indices to map to hardware vertex buffer indices
-			*/
-			void updateHardwareState(const Touch3DFlags enStitches, const IsoVertexVector::const_iterator beginRevMapIVI2HWVI, const IsoVertexVector::const_iterator endRevMapIVI2HWVI);
+			inline bool operator == (const MeshOperation & other) const
+			{
+				return resolution == other.resolution && vertices == other.vertices;
+			}
 		};
 
 		/** An object that can be used to update a hardware vertex buffer */
@@ -161,11 +179,11 @@ namespace Ogre
 
 			/// Identifies which sides of the renderable transition cells apply
 			const Touch3DFlags stitches;
-			/// The LOD and meta data for the rendered surface
-			LOD * const resolution;
+			/// The mesh operation to perform on the vertices and the associated vertex index LOD index
+			MeshOperation meshOp;
+			/// Flag indicating that hardware buffers must be reset, generated by the producer queue and consumed in the main thread
+			RoleSecureFlag::Flag * pResetHWBuffers;
 
-			/// Whether to reset / clear the hardware GPU state first before applying the vertices and indices
-			bool resetting;
 			/// Vertex elements to be flushed to the appropriate hardware vertex buffer
 			VertexElementList vertexQueue;
 			/// Vertex indices to be flushed to the appropriate hardware index buffer
@@ -173,37 +191,51 @@ namespace Ogre
 			/// Identifies the new vertices to be appended to the hardware buffers, maps isovertex indices to their respective hardware vertex indices
 			IsoVertexVector revmapIVI2HWVIQueue;
 
-			BuilderQueue(LOD * pResolution, const Touch3DFlags enStitches)
-				: resolution(pResolution), stitches(enStitches), resetting(false) {}
+			BuilderQueue(LOD * pResolution, Vertices * pVertexStuff, IBufferManager * pBuffMan, const Touch3DFlags enStitches, RoleSecureFlag::Flag * pResetHWBuffers);
+			~BuilderQueue();
 		};
 
 		/** IsoSurfaceRenderable shadow meta data container, precomputed and cached frequently used data, synchronized with hardware buffers */
-		class HardwareIsoVertexShadow
+		class HardwareIsoVertexShadow : private IBufferManager
 		{
 		private:
 			OGRE_RW_MUTEX(_mutex);
 
-			/** Container for the geometry batch data and associated shadow meta data for a pending GPU batch operation */
-			class ConcurrentProducerConsumerQueueBase
+			class StateAccess
 			{
 			protected:
 				/// Pointer to the geometry batch data container
 				BuilderQueue *& _pBuilderQueue;
 
+				/** Sets the flags indicating that associated triangles have just been batched to the GPU
+				@remarks Sets the flags for both this object and the relevant stitch configuration objects that triangles have been batched.
+					Also maps (appends) the specified isovertex indices to hardware vertex buffer indices
+				@param enStitches Flags identifying whitch stitch configuration objects have been updated and to set the gpued flag for
+				@param beginRevMapIVI2HWVI Iterator pattern pointer to beginning of isovertex indices to map to hardware vertex buffer indices
+				@param endRevMapIVI2HWVI Iterator pattern pointer to end of isovertex indices to map to hardware vertex buffer indices */
+				void updateHardwareState(const IsoVertexVector::const_iterator beginRevMapIVI2HWVI, const IsoVertexVector::const_iterator endRevMapIVI2HWVI);
+
 			public:
 				/// The stitch configuration of the batch
 				const Touch3DFlags stitches;	
-				/// The LOD meta data corresponding to the batch
-				LOD * const resolution;
+				/// The mesh operation to perform on the vertices and the associated vertex index LOD index
+				MeshOperation & meshOp;
 
-				/// Whether to reset / clear the hardware GPU state first before applying the vertices and indices
-				bool & resetting;
+				/// Maps new isovertices to hardware vertex indices corresponding to the batch operation pending
+				IsoVertexVector & revmapIVI2HWVIQueue;
+
+				StateAccess(BuilderQueue *& pBuilderQueue);
+				StateAccess(StateAccess && move);
+			};
+
+			/** Container for the geometry batch data and associated shadow meta data for a pending GPU batch operation */
+			class ConcurrentProducerConsumerQueueBase : public StateAccess
+			{
+			public:
 				/// Buffer of vertex elements to batch
 				BuilderQueue::VertexElementList & vertexQueue;
 				/// Buffer of the triangle index list to batch
 				BuilderQueue::IndexList & indexQueue;
-				/// Maps new isovertices to hardware vertex indices corresponding to the batch operation pending
-				IsoVertexVector & revmapIVI2HWVIQueue;
 
 				ConcurrentProducerConsumerQueueBase(BuilderQueue *& pBuilderQueue);
 				ConcurrentProducerConsumerQueueBase(ConcurrentProducerConsumerQueueBase && move);
@@ -213,7 +245,6 @@ namespace Ogre
 			BuilderQueue * _pBuilderQueue;
 
 		public:
-
 			/** Class that encapsulates a shared lock on the hardware buffer batch data and provides access to it via openQueue() */
 			class ConsumerLock
 			{
@@ -225,17 +256,26 @@ namespace Ogre
 
 				/// Reference pointer to the hardware buffer batch data container
 				BuilderQueue *& _pBuilderQueue;
-				/// The LOD meta data to which this batch data applies
-				const LOD * const _pResolution;
+				/// The mesh operation to perform on the vertices and the associated vertex index LOD index
+				const MeshOperation _meshOp;
 				/// The stitch flags of which this batch data applies
 				const Touch3DFlags _enStitches;
+				/// Access to clear (consume) the reset HW buffers flag
+				RoleSecureFlag::IClearFlag * _pClearResetHWBuffersFlag;
 
 				/// Determines if the shared lock was acquired and the hardware buffer batch data container is the right one according to LOD and stitch information
 				inline
-				bool isValid () const { return _lock && _pBuilderQueue != NULL && _pBuilderQueue->resolution == _pResolution && _pBuilderQueue->stitches == _enStitches; }
+				bool isValid () const
+				{
+					return _lock &&
+						_pBuilderQueue != NULL &&
+						_pClearResetHWBuffersFlag != NULL &&
+						_pBuilderQueue->meshOp == _meshOp &&
+						_pBuilderQueue->stitches == _enStitches; 
+				}
 
 			public:
-				ConsumerLock(boost::shared_lock< boost::shared_mutex > && lock, BuilderQueue *& pBuilderQueue, LOD * pResolution, const Touch3DFlags enStitches);
+				ConsumerLock(boost::shared_lock< boost::shared_mutex > && lock, BuilderQueue *& pBuilderQueue, LOD * pResolution, Vertices * pVertices, IBufferManager * pBuffMan, RoleSecureFlag::IClearFlag * pClearResetHWBuffersFlag, const Touch3DFlags enStitches);
 				ConsumerLock(ConsumerLock && move);
 
 				/// @returns True if the shared lock was NOT acquired
@@ -251,31 +291,33 @@ namespace Ogre
 					bool _bDeconstruct;
 
 				public:
+					RoleSecureFlag::IClearFlag & resetHWBuffers;
+
 					/// Thrown if an attempt was made to open the queue without a lock
 					class AccessEx : public std::exception {};
 
-					QueueAccess(BuilderQueue *& pBuilderQueue);
+					QueueAccess(BuilderQueue *& pBuilderQueue, RoleSecureFlag::IClearFlag * pClearResetHWBuffersFlag);
 					QueueAccess(QueueAccess && move);
 					~QueueAccess();
 
 					/// Returns the number of required vertices to store in the hardware vertex buffer for the batch operation pending including vertices already present in the hardware buffer
 					inline
-					size_t requiredVertexCount() const { return resolution->getHWIndexBufferTail() + vertexQueue.size(); }
+					size_t requiredVertexCount() const { return meshOp.nextVertexIndex() + vertexQueue.size(); }
 
 					/// Returns the actual number of vertices required for storage in the hardware buffer accounting for buffer-resize and hence reset
 					inline
-					size_t actualVertexCount() const { return (!resetting ? resolution->getHWIndexBufferTail() : 0) + vertexQueue.size(); }
+					size_t actualVertexCount() const { return (!resetHWBuffers ? meshOp.nextVertexIndex() : 0) + vertexQueue.size(); }
 
 					/// Returns the offset into the vertex buffer to begin populating vertex data at, will be zero if the vertex buffer was recently resized
 					inline
-					size_t vertexBufferOffset () const { return !resetting ? resolution->getHWIndexBufferTail() : 0; }
+					size_t vertexBufferOffset () const { return !resetHWBuffers ? meshOp.nextVertexIndex() : 0; }
 
-					/// Updates the hardware state of the shadow meta data signalling that geometry has been batched
+					/// Updates the hardware state of the shadow meta data signaling that geometry has been batched
 					void consume();
 				} openQueue () /// Provides access to the geometry batch data container
 				{ 
 					if (isValid())
-						return QueueAccess(_pBuilderQueue); 
+						return QueueAccess(_pBuilderQueue, _pClearResetHWBuffersFlag); 
 					else
 						throw QueueAccess::AccessEx();
 				}
@@ -289,18 +331,25 @@ namespace Ogre
 
 				boost::unique_lock< boost::shared_mutex > _lock;
 
-				/// Deletes and reconstructs the specified geometry bach data container object
-				BuilderQueue *& reallocate(BuilderQueue *& pBuilderQueue, LOD * pResolution, const Touch3DFlags enStitches);
+				/// Deletes and reconstructs the specified geometry batch data container object
+				BuilderQueue *& reallocate(BuilderQueue *& pBuilderQueue, LOD * pResolution, Vertices * pVertices, IBufferManager * pBuffMan, const Touch3DFlags enStitches, RoleSecureFlag::Flag * pResetHWBuffersFlag);
 
 			public:
+				/// Provides the capability to set and clear the reset HW buffers flag
+				RoleSecureFlag::ISetFlag & resetHWBuffers;
+
 				/** Begin producer access for preparing geometry batch data.
 				@remarks Implies an existing lock and allocates a new BuilderQueue based on the specified LOD resolution and stitch configuration
 				@param lock An existing exclusive lock
 				@param pBuilderQueue A new instance of BuilderQueue will be constructed, this will be set with the pointer to that object
 				@param pResolution Identifies the LOD of the batch operation
+				@param pVertices Vertex information defining the entire mesh and all of its resolutions
+				@param pBuffMan The buffer manager that knows how to clear the buffers
 				@param enStitches Identifies the stitch configuration of the batch operation
+				@param pSetResetHWBuffersFlag Access to a flag to set the hardware buffers flag
+				@param pResetHWBuffersFlag The opaque reset hardware buffers flag
 				*/
-				ProducerQueueAccess(boost::unique_lock< boost::shared_mutex > && lock, BuilderQueue *& pBuilderQueue, LOD * pResolution, const Touch3DFlags enStitches);
+				ProducerQueueAccess(boost::unique_lock< boost::shared_mutex > && lock, BuilderQueue *& pBuilderQueue, LOD * pResolution, Vertices * pVertices, IBufferManager * pBuffMan, const Touch3DFlags enStitches, RoleSecureFlag::ISetFlag * pSetResetHWBuffersFlag, RoleSecureFlag::Flag * pResetHWBuffersFlag);
 				ProducerQueueAccess(ProducerQueueAccess && move);
 			};
 
@@ -311,16 +360,31 @@ namespace Ogre
 				boost::shared_lock< boost::shared_mutex > _lock;
 
 			public:
-				/// The resolution requested for read-only access
-				const LOD * const resolution;
+				/// The mesh operation to perform on the vertices and the associated vertex index LOD index
+				const MeshOperation meshOp;
 
 				/** Begin read-only access for reading resolution data.
 				@remarks Implies an existing lock providing const-access to the specified resolution
 				@param lock An existing read-lock
 				@param pResolution The resolution to expose
+				@param pVertices Vertex information defining the entire mesh and all of its resolutions
+				@param pBuffMan The manager for handling the clearance of buffers
 				*/
-				ReadOnlyAccess(boost::shared_lock< boost::shared_mutex > && lock, const LOD * pResolution);
+				ReadOnlyAccess(boost::shared_lock< boost::shared_mutex > && lock, const LOD * pResolution, const Vertices * pVertices, IBufferManager * pBuffMan);
 				ReadOnlyAccess(ReadOnlyAccess && move);
+			};
+
+			/** Provides direct access to the shadow state by-passing the producer/consumer model.  No thread-locking model is applied */
+			class DirectAccess : public StateAccess
+			{
+			private:
+				/// Deletes and reconstructs the specified geometry batch data container object
+				BuilderQueue *& reallocate(BuilderQueue *& pBuilderQueue, LOD * pResolution, Vertices * pVertices, IBufferManager * pBuffMan, const Touch3DFlags enStitches, RoleSecureFlag::Flag * pResetHWBuffersFlag);
+
+			public:
+				DirectAccess(BuilderQueue *& pBuilderQueue, LOD * pResolution, Vertices * pVertices, IBufferManager * pBuffMan, const Touch3DFlags enStitches);
+				DirectAccess(DirectAccess && move);
+				~DirectAccess();
 			};
 
 			/// Initialize with the specified maximum quantity of resolutions allowed from maximum resolution
@@ -337,20 +401,41 @@ namespace Ogre
 			ProducerQueueAccess requestProducerQueue(const unsigned char nLOD, const Touch3DFlags enStitches);
 			/// Requests read-only access on shadow data pertinent to the specified LOD
 			ReadOnlyAccess requestReadOnlyAccess(const unsigned char nLOD);
+			/// Requests direct access on the shadow data pertinent to the specified LOD and stitch configuration without locking or concurrency support
+			DirectAccess requestDirectAccess(const unsigned char nLOD, const Touch3DFlags enStitches);
 			/// Retrieve the LOD meta data container for the specified LOD ordinal (zero is highest resolution, >0 is lower resolution)
 			LOD * getDirectAccess(const unsigned char nLOD) { return _vpResolutions[nLOD]; }
 
-			/// Calls LOD::clearAll() for all LOD shadow meta data containers
-			void clear ();
-			/// Clears the hardware state for all LOD shadow meta data containers
-			void reset ();
+			/** Clears either the GPU, shadow, or both for all resolutions
+ 			 * @param depth Indicates how deep to clear */
+			void clearBuffers (const BufferDepth depth = IBufferManager::BD_GPU);
+
+			/// Updates the hardware state of the shadow meta data for the specified queue signaling that geometry has been batched
+			void consume(ConcurrentProducerConsumerQueueBase * pQueue);
 
 		private:
+			class ResetHWBuffersFlag : public RoleSecureFlag::Flag
+			{
+			public:
+				template< typename INTERFACE > INTERFACE * queryInterface () { return RoleSecureFlag::Flag::queryInterface< INTERFACE > (); }
+			};
+
 			/// Maximum quantity of detail levels
 			const unsigned char _nCountResolutions;
 			/// A shadow LOD meta data container object for each level of detail
 			LOD ** const _vpResolutions;
+			/// The information to the vertex stuff
+			Vertices * _pVertices;
 
+			/// Implements IBufferManager
+			void clear (const BufferDepth depth);
+			/// Implements IBufferManager
+			void clear(const BufferDepth depth, signed nLOD);
+
+			/// Used by IBufferManager implementation, this implicitly clears LOD-specific data.
+			void clearLOD(BufferDepth depth, LOD * resolution);
+			/// Used by IBufferManager implementation, this implicitly clears vertex-specific data
+			void clearVerts(BufferDepth depth);
 		};
 	}
 }

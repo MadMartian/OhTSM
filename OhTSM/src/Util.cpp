@@ -453,6 +453,35 @@ namespace Ogre
 
 	}
 
+	RoleSecureFlag::Flag::operator bool() const
+	{
+		return _flag;
+	}
 
+	bool RoleSecureFlag::Flag::operator--()
+	{
+		return _flag = false;
+	}
+
+	bool RoleSecureFlag::Flag::operator++()
+	{
+		return _flag = true;
+	}
+
+	bool RoleSecureFlag::Flag::operator!() const
+	{
+		return !_flag;
+	}
+
+	RoleSecureFlag::Flag::Flag()
+		: _flag (false)
+	{
+
+	}
+
+	RoleSecureFlag::Flag::~Flag()
+	{
+
+	}
 
 }

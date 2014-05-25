@@ -290,7 +290,7 @@ namespace Ogre
 				debugs,
 	#endif // _DEBUG
 				channel,
-				queue.resolution, fragment.block, pShadow, nSurfaceFlags, enStitches, nVertexBufferCapacity
+				&queue.meshOp, fragment.block, pShadow, nSurfaceFlags, enStitches, nVertexBufferCapacity
 			);
 			fillShadowQueues(queue, fragment.block->getGridScale());
 		}
@@ -299,20 +299,28 @@ namespace Ogre
 	void IsoSurfaceBuilder::build( const Voxel::CubeDataRegion * pDataGrid, IsoSurfaceRenderable * pISR, const unsigned nLOD, const Touch3DFlags enStitches )
 	{
 		{ OGRE_LOCK_MUTEX(mMutex);
-			HardwareIsoVertexShadow::ProducerQueueAccess prodq = pISR->getShadow() ->requestProducerQueue(nLOD, enStitches);
+			HardwareIsoVertexShadow::DirectAccess direct = pISR->getShadow() ->requestDirectAccess(nLOD, enStitches);
 
 			buildImpl(
 #if defined(_DEBUG) || defined(_OHT_LOG_TRACE)
 				DebugInfo(pISR),
 #endif // _DEBUG
 				pISR->getMetaWorldFragment() ->factory->channel,
-				prodq.resolution, pDataGrid, pISR->getShadow(),
+				&direct.meshOp, pDataGrid, pISR->getShadow(),
 				pISR->getMetaWorldFragment() ->factory->surfaceFlags,
-				enStitches, pISR->getVertexBufferCapacity(nLOD)
+				enStitches, pISR->getVertexBufferCapacity()
 			);
 			if (_bResetHWBuffers)
-				prodq.resolution->clearHardwareState();
-			pISR->directlyPopulateBuffers(_pMainVtxElems, prodq.resolution, enStitches, _pMainVtxElems->vertexShipment.size(), _pMainVtxElems->triangles.size() * 3);
+			{
+				direct.meshOp.clear(IBufferManager::BD_GPU);
+			}
+			pISR->populateBuffers(
+				_pMainVtxElems, 
+				direct, 
+				_bResetHWBuffers, 
+				_pMainVtxElems->vertexShipment.size(), 
+				_pMainVtxElems->triangles.size() * 3
+			);
 		}
 	}
 
@@ -324,7 +332,7 @@ namespace Ogre
 		const DebugInfo & debugs,
 #endif // _DEBUG
 		const Channel::Ident channel,
-		HardwareShadow::LOD * pResolution,
+		HardwareShadow::MeshOperation * pMeshOp,
 		const Voxel::CubeDataRegion * pDataGrid, 
 		SharedPtr< HardwareIsoVertexShadow > & pShadow, 
 		const size_t nSurfaceFlags,
@@ -336,8 +344,8 @@ namespace Ogre
 
 		_bResetHWBuffers = false;
 		_pShadow = pShadow;
-		_pResolution = pResolution;
-		_nLOD = _pResolution->lod;
+		_pMeshOp = pMeshOp;
+		_nLOD = pMeshOp->resolution->lod;
 		_nSurfaceFlags = nSurfaceFlags;
 		_enStitches = enStitches;
 		_pCurrentChannelParams = & _chanparams[channel];
@@ -346,9 +354,9 @@ namespace Ogre
 		_debugs = debugs;
 #endif // _DEBUG
 
-		_nHWBufPos = _pResolution->getHWIndexBufferTail();
-		_vBorderIVP = _pResolution->borderIsoVertexProperties;
-		_vCenterIVP = _pResolution->middleIsoVertexProperties;
+		_nHWBufPos = _pMeshOp->nextVertexIndex();
+		_vBorderIVP = _pMeshOp->resolution->borderIsoVertexProperties;
+		_vCenterIVP = _pMeshOp->resolution->middleIsoVertexProperties;
 		_pMainVtxElems->clear();
 
 		const_DataAccessor data = pDataGrid->lease();
@@ -357,14 +365,14 @@ namespace Ogre
 		//OHTDD_Translate(pDataGrid->getBoundingBox().getHalfSize() / pDataGrid->getGridScale());
 
 		// Check to see if the hardware buffer contains basic vertices for this resolution
-		if (!_pResolution->shadowed)
+		if (!_pMeshOp->resolution->shadowed)
 			attainRegularTriangulationCases(data);
 
 		for (unsigned s = 0; s < CountOrthogonalNeighbors; ++s)
 		{
 			const Touch3DSide side = OrthogonalNeighbor_to_Touch3DSide[s];
 
-			if ((_enStitches & side) && !_pResolution->stitches[s] ->shadowed)
+			if ((_enStitches & side) && !_pMeshOp->resolution->stitches[s] ->shadowed)
 				attainTransitionTriangulationCases(data, OrthogonalNeighbor(s));
 		}
 
@@ -377,7 +385,7 @@ namespace Ogre
 				computeTransitionRefinements(OrthogonalNeighbor(s), data);
 		}
 
-		_pResolution->restoreHWIndices(_pMainVtxElems->indices);
+		_pMeshOp->restoreHWIndices(_pMainVtxElems->indices);
 
 		clearTransitionInfo();
 		for (unsigned s = 0; s < CountOrthogonalNeighbors; ++s)
@@ -386,9 +394,9 @@ namespace Ogre
 
 			if (_enStitches & side) 
 			{
-				if (!_pResolution->stitches[s] ->gpued)
+				if (!_pMeshOp->resolution->stitches[s] ->gpued)
 					marshalTransitionVertexElements(pDataGrid, data, OrthogonalNeighbor(s));
-				if (!_pResolution->stitches[s] ->shadowed)
+				if (!_pMeshOp->resolution->stitches[s] ->shadowed)
 					collectTransitionVertexProperties(data, OrthogonalNeighbor(s));
 			}
 		}
@@ -403,7 +411,7 @@ namespace Ogre
 			_vTransInfos3[TransitionVRECaCC::TVT_Half].end()
 		);
 
-		if (!_pResolution->gpued)
+		if (!_pMeshOp->resolution->gpued)
 			marshalRegularVertexElements(pDataGrid, data);
 
 		restoreTransitionVertexMappings(data);
@@ -443,27 +451,27 @@ namespace Ogre
 			//alignTransitionVertices();
 		}
 
-		_pResolution->borderIsoVertexProperties.insert(
-			_pResolution->borderIsoVertexProperties.end(), 
-			_vBorderIVP.begin() + _pResolution->borderIsoVertexProperties.size(), 
+		_pMeshOp->resolution->borderIsoVertexProperties.insert(
+			_pMeshOp->resolution->borderIsoVertexProperties.end(), 
+			_vBorderIVP.begin() + _pMeshOp->resolution->borderIsoVertexProperties.size(), 
 			_vBorderIVP.end()
 		);
-		_pResolution->middleIsoVertexProperties.insert(
-			_pResolution->middleIsoVertexProperties.end(), 
-			_vCenterIVP.begin() + _pResolution->middleIsoVertexProperties.size(), 
+		_pMeshOp->resolution->middleIsoVertexProperties.insert(
+			_pMeshOp->resolution->middleIsoVertexProperties.end(), 
+			_vCenterIVP.begin() + _pMeshOp->resolution->middleIsoVertexProperties.size(), 
 			_vCenterIVP.end()
 		);
 			
-		_pResolution->shadowed = true;
+		_pMeshOp->resolution->shadowed = true;
 		for (unsigned s = 0; s < CountOrthogonalNeighbors; ++s)
 		{
 			const Touch3DSide side = OrthogonalNeighbor_to_Touch3DSide[s];
 
 			if (_enStitches & side)
-				_pResolution->stitches[s] ->shadowed = true;
+				_pMeshOp->resolution->stitches[s] ->shadowed = true;
 		}
 
-		_pResolution = NULL;
+		_pMeshOp = NULL;
 		_pShadow.setNull();
 	}
 
@@ -488,7 +496,7 @@ namespace Ogre
 			const_DataAccessor data = pDataGrid->lease();
 			_enStitches = highs;
 			_nLOD = nLOD;
-			_vCenterIVP = ro.resolution->middleIsoVertexProperties;
+			_vCenterIVP = ro.meshOp.resolution->middleIsoVertexProperties;
 			_pCurrentChannelParams = & _chanparams[channel];
 
 			DiscreteRayIterator walker(ray, Real(1 << nLOD), Vector3::UNIT_SCALE * pDataGrid->getBoxSize().getMinimum() / pDataGrid->getGridScale());
@@ -502,10 +510,10 @@ namespace Ogre
 			SharedPtr< IRegularCaseLookup > pcluReg;
 			SharedPtr< ITransitionCaseLookup > pcluTran;
 			
-			if (ro.resolution->shadowed)
+			if (ro.meshOp.resolution->shadowed)
 			{
-				pcluReg.bind(new RegularCaseCache(ro.resolution, _cubemeta));
-				pcluTran.bind(new TransitionCaseCache(ro.resolution, _cubemeta));
+				pcluReg.bind(new RegularCaseCache(ro.meshOp.resolution, _cubemeta));
+				pcluTran.bind(new TransitionCaseCache(ro.meshOp.resolution, _cubemeta));
 			} else
 			{
 				pcluReg.bind(new RegularCaseBuilder(_nLOD, &data, _cubemeta));
@@ -737,7 +745,7 @@ namespace Ogre
 			if (!i->trivial)
 			{
 				// Cell has a nontrivial triangulation.
-				_pResolution->regCases.push_back(nontrivialcase);
+				_pMeshOp->resolution->regCases.push_back(nontrivialcase);
 			}
 		}
 	}
@@ -753,7 +761,7 @@ namespace Ogre
 		const DimType nResSpan = 1 << _nLOD;
 		NonTrivialTransitionCase nontrivialcase;
 
-		OgreAssert(_pResolution->stitches[on] != NULL, "Transition state was not allocated");
+		OgreAssert(_pMeshOp->resolution->stitches[on] != NULL, "Transition state was not allocated");
 
 		for (tc.x = 0; tc.x < nDim; tc.x += nResSpan)
 			for (tc.y = 0; tc.y < nDim; tc.y += nResSpan)
@@ -763,7 +771,7 @@ namespace Ogre
 				{
 					nontrivialcase.casecode = result.casecode;
 					nontrivialcase.cell = tc.index();
-					_pResolution->stitches[on] ->transCases.push_back(nontrivialcase);
+					_pMeshOp->resolution->stitches[on] ->transCases.push_back(nontrivialcase);
 
 					OHT_ISB_DBGTRACE("Attain Case: " << tc << drawTransitionCell(nontrivialcase.casecode, 1));
 				}
@@ -783,7 +791,7 @@ namespace Ogre
 
 		processRegularIsoVertices
 		(
-			_pResolution->regCases.begin(), _pResolution->regCases.end(), 
+			_pMeshOp->resolution->regCases.begin(), _pMeshOp->resolution->regCases.end(), 
 			gc, 
 			[&] (const IsoVertexIndex ivi, const VoxelIndex c0, const VoxelIndex c1) 
 			{
@@ -814,7 +822,7 @@ namespace Ogre
 
 		processTransitionIsoVertices 
 		(
-			_pResolution->stitches[on]->transCases.begin(), _pResolution->stitches[on]->transCases.end(), 
+			_pMeshOp->resolution->stitches[on]->transCases.begin(), _pMeshOp->resolution->stitches[on]->transCases.end(), 
 			tc, 
 			[&] (const IsoVertexIndex ivi, const TransitionVRECaCC::Type type, const VoxelIndex c0, const VoxelIndex c1, const Touch3DSide side3d) 
 			{
@@ -857,7 +865,7 @@ namespace Ogre
 		collectTransitionVertexProperties
 		(
 			data, 
-			_pResolution->stitches[on]->transCases.begin(), _pResolution->stitches[on]->transCases.end(), 
+			_pMeshOp->resolution->stitches[on]->transCases.begin(), _pMeshOp->resolution->stitches[on]->transCases.end(), 
 			tc, 
 			[&] (const IsoVertexIndex ivi, const TransitionVRECaCC & vrecacc, const VoxelIndex c0, const VoxelIndex c1, const Touch3DSide side3d) 
 			{
@@ -887,7 +895,7 @@ namespace Ogre
 		GridCell gc(_cubemeta, _nLOD);
 #endif // _DEBUG
 		
-		for (RegularTriangulationCaseList::const_iterator i = _pResolution->regCases.begin(); i != _pResolution->regCases.end(); ++i)
+		for (RegularTriangulationCaseList::const_iterator i = _pMeshOp->resolution->regCases.begin(); i != _pMeshOp->resolution->regCases.end(); ++i)
 		{
 			tribuild << *i;
 
@@ -951,7 +959,7 @@ namespace Ogre
 #endif // _DEBUG
 			if (_enStitches & side)
 			{
-				for (TransitionTriangulationCaseList::const_iterator i = _pResolution->stitches[s] ->transCases.begin(); i != _pResolution->stitches[s] ->transCases.end(); ++i)
+				for (TransitionTriangulationCaseList::const_iterator i = _pMeshOp->resolution->stitches[s] ->transCases.begin(); i != _pMeshOp->resolution->stitches[s] ->transCases.end(); ++i)
 				{
 					tribuild << *i;
 
@@ -1200,7 +1208,7 @@ namespace Ogre
 
 		walkCellVertices
 		(
-			_pResolution->regCases.begin(), _pResolution->regCases.end(), 
+			_pMeshOp->resolution->regCases.begin(), _pMeshOp->resolution->regCases.end(), 
 			gc, 
 			[&] (const GridCell & gc, const unsigned short nVRECaCC, const unsigned nLOD)
 			{
@@ -1217,8 +1225,8 @@ namespace Ogre
 		TransitionCell tc (_cubemeta, _nLOD, on);
 
 		walkCellVertices(
-			_pResolution->stitches[on]->transCases.begin(), 
-			_pResolution->stitches[on]->transCases.end(), 
+			_pMeshOp->resolution->stitches[on]->transCases.begin(), 
+			_pMeshOp->resolution->stitches[on]->transCases.end(), 
 			tc, 
 			[&] (const TransitionCell & tc, const unsigned short nVRECaCC, const unsigned nLOD)
 			{
@@ -1305,7 +1313,8 @@ namespace Ogre
 	{
 		oht_assert_threadmodel(ThrMdl_Background);
 
-		queue.resetting = _bResetHWBuffers;
+		if (_bResetHWBuffers)
+			++queue.resetHWBuffers;
 
 		for (IsoVertexVector::const_iterator i = _pMainVtxElems->vertexShipment.begin(); i != _pMainVtxElems->vertexShipment.end(); ++i)
 		{

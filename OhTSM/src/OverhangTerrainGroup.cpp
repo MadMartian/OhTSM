@@ -1065,7 +1065,7 @@ namespace Ogre
 			reqdata.lod = nLOD;
 			reqdata.surfaceFlags = pFactory->surfaceFlags;
 			reqdata.stitches = enStitches;
-			reqdata.vertexBufferCapacity = pISR->getVertexBufferCapacity(nLOD);
+			reqdata.vertexBufferCapacity = pISR->getVertexBufferCapacity();
 
 			return 
 				Root::getSingleton().getWorkQueue()->addRequest(
