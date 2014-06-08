@@ -48,8 +48,8 @@ int WINAPI WinMain ( HINSTANCE hInst, HINSTANCE, LPSTR szCmdLine, int)
 		ResourceGroupManager::getSingleton().initialiseAllResourceGroups();
 
 		Light * pSun = pScMgr->createLight("Sun");
-		pSun->setPosition(0,5000, 0);
-		pSun->setType(Light::LT_POINT);
+		pSun->setDirection(Vector3(0.4f, 1.0f, 0.3f).normalisedCopy());
+		pSun->setType(Light::LT_DIRECTIONAL);
 
 		MaterialPtr pMat = MaterialManager::getSingleton().create("BaseMaterial", ResourceGroupManager::DEFAULT_RESOURCE_GROUP_NAME);
 		Pass * pPass = pMat->getTechnique(0) ->getPass(0);
@@ -62,7 +62,7 @@ int WINAPI WinMain ( HINSTANCE hInst, HINSTANCE, LPSTR szCmdLine, int)
 		Camera * pCam = pScMgr->createCamera("Photographer");
 		pCam->setNearClipDistance(0.1f);
 		pCam->setFarClipDistance(7000);
-		pCam->setPosition(Vector3(-2725.24f, 277.747f, 2748.56f));
+		pCam->setPosition(Vector3(0, 300.0f, 0));
 		pCam->setDirection(Vector3(0.998938f, 0.0495558f, 0.00161433f));
 
 		Viewport * vp = pRendWindow->addViewport(pCam);
