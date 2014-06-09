@@ -47,13 +47,9 @@ namespace Ogre
 	)
 	:	LODRenderable(nLODLevels, fPixelError, false, 0, sName),
 		_pVtxDecl(pVtxDecl), _pVtxBB(HardwareBufferManager::getSingletonPtr() ->createVertexBufferBinding()),
-		_pVertexData(new SurfaceVertexData(pVtxDecl)),
-		_txWorld(Matrix4::IDENTITY),
-		_pvMeshData(new MeshData * [nLODLevels])
+		_pMesh(new Mesh(nLODLevels, pVtxDecl)),
+		_txWorld(Matrix4::IDENTITY)
 	{
-		for (unsigned c = 0; c < nLODLevels; ++c)
-			_pvMeshData[c] = NULL;
-
 		oht_assert_threadmodel(ThrMdl_Single);
 		// Initialize render operation
 		_renderOp.operationType = enRenderOpType;
@@ -66,16 +62,13 @@ namespace Ogre
 	{
 		oht_assert_threadmodel(ThrMdl_Single);
 		OGRE_DELETE _renderOp.vertexData;
-		for (unsigned c = 0; c < _nLODCount; ++c)
-			delete _pvMeshData[c];
-		delete [] _pvMeshData;
-		delete _pVertexData;
+		delete _pMesh;
 		HardwareBufferManager::getSingletonPtr() ->destroyVertexBufferBinding(_pVtxBB);
 	}
 
 	bool DynamicRenderable::isConfigurationBuilt( const unsigned nLOD, const size_t nStitchFlags ) const
 	{
-		return _pvMeshData[nLOD] != NULL && _pvMeshData[nLOD] ->indices.find(nStitchFlags) != _pvMeshData[nLOD] ->indices.end();
+		return _pMesh->indices.range(nLOD, nStitchFlags) != NULL;
 	}
 
 	bool DynamicRenderable::prepareIndexBuffer( const unsigned nLOD, const size_t nStitchFlags, const size_t indexCount )
@@ -83,41 +76,20 @@ namespace Ogre
 		oht_assert_threadmodel(ThrMdl_Single);
 
 		if (_renderOp.useIndexes)
-		{
-			if (_pvMeshData[nLOD] == NULL)
-				_pvMeshData[nLOD] = new MeshData(_pVtxDecl);
+			return _pMesh->indices.prepare(nLOD, nStitchFlags, indexCount);
 
-			return _pvMeshData[nLOD] ->prepareIndexBuffer(nStitchFlags, indexCount);
-		}
 		return true;
-	}
-
-	DynamicRenderable::MeshData::Index * DynamicRenderable::getIndexData( const int nLOD, const size_t nStitchFlags )
-	{
-		OgreAssert(_pvMeshData[nLOD] != NULL, "Resolution doesn't exist");
-		return & _pvMeshData[nLOD] ->indices[nStitchFlags];
-	}
-
-	DynamicRenderable::SurfaceVertexData * DynamicRenderable::getVertexData( )
-	{
-		return _pVertexData;
 	}
 
 	bool DynamicRenderable::prepareVertexBuffer( const size_t nVtxCount, bool bClearIndicesToo )
 	{
 		oht_assert_threadmodel(ThrMdl_Single);
 
-		bool bPrepareResult = _pVertexData->prepare(nVtxCount);
+		bool bPrepareResult = _pMesh->vertices.prepare(nVtxCount);
 
 		if (bClearIndicesToo || !bPrepareResult)
 		{
-			for (size_t l = 0; l < getNumLevels(); ++l)
-			{
-				MeshData * pMeshData = _pvMeshData[l];
-
-				if (pMeshData != NULL)
-					pMeshData->clear();
-			}
+			_pMesh->indices.reset();
 		}
 
 		return bPrepareResult && !bClearIndicesToo;
@@ -166,129 +138,27 @@ namespace Ogre
 		oht_assert_threadmodel(ThrMdl_Single);
 		// TODO: Is this necessary now that we employ latent render operations?
 		_renderOp.vertexData->vertexBufferBinding->unsetAllBindings();
-		for (size_t l = 0; l < getNumLevels(); ++l)
-		{
-			MeshData * pMeshData = _pvMeshData[l];
-
-			if (pMeshData != NULL)
-				pMeshData->clear();
-		}
-
-		_pVertexData->clear();
+		_pMesh->clear();
 	}
 
 	size_t DynamicRenderable::getVertexBufferCapacity() const
 	{
-		return _pVertexData->getCapacity();
+		return _pMesh->vertices.getCapacity();
 	}
 
-	DynamicRenderable::MeshData::MeshData(VertexDeclaration * pVtxDecl) 
-	{}
-
-	DynamicRenderable::MeshData::MeshData( DynamicRenderable::MeshData && move ) 
-		: indices(move.indices)
-	{}
-
-	DynamicRenderable::MeshData::~MeshData()
-	{}
-
-	void DynamicRenderable::MeshData::clear()
+	DynamicRenderable::Mesh * DynamicRenderable::getMesh()
 	{
-		indices.clear();
-	}
-
-	bool DynamicRenderable::MeshData::prepareIndexBuffer( const size_t nStitchFlags, const size_t nIndexCount )
-	{
-		OgreAssert(nIndexCount <= std::numeric_limits<unsigned short>::max(), "indexCount exceeds 16 bit");
-
-		return indices[nStitchFlags].prepare(nIndexCount);
-	}
-
-	DynamicRenderable::MeshData::Index::Index()
-		: _capacity(0)
-	{}
-
-	DynamicRenderable::MeshData::Index::Index( Index && move )
-		: _capacity(move._capacity)
-	{
-		_data.indexBuffer = move._data.indexBuffer;
-		_data.indexStart = move._data.indexStart;
-		_data.indexCount = move._data.indexCount;
-	}
-
-	DynamicRenderable::MeshData::Index::Index( const Index & copy )
-		: _capacity(copy._capacity)
-	{
-		_data.indexBuffer = copy._data.indexBuffer;
-		_data.indexStart = copy._data.indexStart;
-		_data.indexCount = copy._data.indexCount;
-	}
-
-	DynamicRenderable::MeshData::Index & DynamicRenderable::MeshData::Index::operator = ( const Index & copy )
-	{
-		_data.indexBuffer = copy._data.indexBuffer;
-		_data.indexCount = copy._data.indexCount;
-		_data.indexStart = copy._data.indexStart;
-		_capacity = copy._capacity;
-		return *this;
-	}
-
-	bool DynamicRenderable::MeshData::Index::prepare( const size_t nIndexCount )
-	{
-		bool bPrepareResult = true;
-
-		if ((nIndexCount > _capacity) || !_capacity)
-		{
-			if (!_capacity)
-				_capacity = 1;
-
-			while (_capacity < nIndexCount)
-				_capacity <<= 1;
-
-			_data.indexBuffer =
-				HardwareBufferManager::getSingleton().createIndexBuffer(
-					HardwareIndexBuffer::IT_16BIT,
-					_capacity,
-					HardwareBuffer::HBU_DYNAMIC_WRITE_ONLY,
-					DYNAMIC_RENDERABLE_SHADOW_BUFFERED
-				);
-
-			bPrepareResult = false;
-		}
-
-		_data.indexCount = nIndexCount;
-		return bPrepareResult;
-	}
-
-	void DynamicRenderable::MeshData::Index::clear()
-	{
-		_capacity =
-		_data.indexStart = 
-		_data.indexCount = 0;
-		_data.indexBuffer.setNull();
-	}
-
-	DynamicRenderable::MeshData::Index::~Index()
-	{
+		return _pMesh;
 	}
 
 	DynamicRenderable::SurfaceVertexData::SurfaceVertexData(VertexDeclaration * pVtxDecl) 
-		: _capacity(0), _count(0), _elemsize(pVtxDecl->getVertexSize(0)) {}
+		: _capacity(0), _count(0), _elemsize(pVtxDecl->getVertexSize(0)), _bReferenced(false) {}
 
 	DynamicRenderable::SurfaceVertexData::SurfaceVertexData( const SurfaceVertexData & copy )
-		: _buffer(copy._buffer), _capacity(copy._capacity), _count(copy._count), _elemsize(copy._elemsize) {}
+		: _buffer(copy._buffer), _capacity(copy._capacity), _count(copy._count), _elemsize(copy._elemsize), _bReferenced(true) {}
 
 	DynamicRenderable::SurfaceVertexData::SurfaceVertexData( SurfaceVertexData && move )
-		: _buffer(move._buffer), _capacity(move._capacity), _count(move._count), _elemsize(move._elemsize) {}
-
-	DynamicRenderable::SurfaceVertexData & DynamicRenderable::SurfaceVertexData::operator = ( const SurfaceVertexData & copy )
-	{
-		_buffer = copy._buffer;
-		_capacity = copy._capacity;
-		_count = copy._count;
-		_elemsize = copy._elemsize;
-		return *this;
-	}
+		: _buffer(move._buffer), _capacity(move._capacity), _count(move._count), _elemsize(move._elemsize), _bReferenced(move._bReferenced) {}
 
 	DynamicRenderable::SurfaceVertexData::~SurfaceVertexData() {}
 
@@ -304,15 +174,12 @@ namespace Ogre
 			while (_capacity < nVertexCount)
 				_capacity <<= 1;
 
-			_buffer = 
-				HardwareBufferManager::getSingleton().createVertexBuffer(
-					_elemsize,
-					_capacity,
-					HardwareBuffer::HBU_DYNAMIC_WRITE_ONLY,
-					DYNAMIC_RENDERABLE_SHADOW_BUFFERED
-				);
+			rebuildHWBuffer();
 
 			bResized = true;
+		} else if (_buffer.isNull())
+		{
+			rebuildHWBuffer();
 		}
 
 		// Update vertex count in the render operation
@@ -321,11 +188,260 @@ namespace Ogre
 		return !bResized;
 	}
 
+	void DynamicRenderable::SurfaceVertexData::reset()
+	{
+		_count = 0;
+
+		if (_bReferenced)
+		{
+			_buffer.setNull();
+			_bReferenced = false;
+		}
+	}
+
 	void DynamicRenderable::SurfaceVertexData::clear()
 	{
-		_capacity = 
-		_count = 0;
+		reset();
+		_capacity = 0;
 		_buffer.setNull();
+	}
+
+	const DynamicRenderable::SurfaceVertexData * DynamicRenderable::SurfaceVertexData::shallowCopy() const
+	{
+		_bReferenced = true;
+		return new SurfaceVertexData(*this);
+	}
+
+	void DynamicRenderable::SurfaceVertexData::rebuildHWBuffer()
+	{
+		_buffer = 
+			HardwareBufferManager::getSingleton().createVertexBuffer(
+				_elemsize,
+				_capacity,
+				HardwareBuffer::HBU_DYNAMIC_WRITE_ONLY,
+				DYNAMIC_RENDERABLE_SHADOW_BUFFERED
+			);
+	}
+
+	DynamicRenderable::SurfaceIndexData::Resolution::Resolution(VertexDeclaration * pVtxDecl) 
+	{}
+
+	DynamicRenderable::SurfaceIndexData::Resolution::Resolution( DynamicRenderable::SurfaceIndexData::Resolution && move ) 
+		: _indices(static_cast< RangeMap && > (move._indices))
+	{}
+
+	DynamicRenderable::SurfaceIndexData::Resolution::Resolution( const Resolution & copy )
+		: _indices(copy._indices)
+	{
+
+	}
+
+	DynamicRenderable::SurfaceIndexData::Resolution::~Resolution()
+	{
+		clear();
+	}
+
+	void DynamicRenderable::SurfaceIndexData::Resolution::clear()
+	{
+		_indices.clear();
+	}
+
+	DynamicRenderable::SurfaceIndexData::Resolution::Range * DynamicRenderable::SurfaceIndexData::Resolution::operator[]( const size_t stitches )
+	{
+		RangeMap::iterator i = _indices.find(stitches);
+		return i == _indices.end() ? NULL : &i->second;
+	}
+
+	const DynamicRenderable::SurfaceIndexData::Resolution::Range * DynamicRenderable::SurfaceIndexData::Resolution::operator[]( const size_t stitches ) const
+	{
+		RangeMap::const_iterator i = _indices.find(stitches);
+		return i == _indices.end() ? NULL : &i->second;
+	}
+
+	void DynamicRenderable::SurfaceIndexData::Resolution::insert
+	( 
+		const size_t stitches, 
+		const size_t nOffset, 
+		const size_t nCount
+	)
+	{
+		_indices[stitches] = Range(nOffset, nCount);
+	}
+
+	bool DynamicRenderable::SurfaceIndexData::prepare( const size_t nIndexCount )
+	{
+		bool bPrepareResult = true;
+		unsigned nNewRequiredSize = _count + nIndexCount;
+
+		if ((nNewRequiredSize > _capacity) || !_capacity)
+		{
+			if (!_capacity)
+				_capacity = 1;
+
+			while (_capacity < nNewRequiredSize)
+				_capacity <<= 1;
+
+			rebuildHWBuffer();
+
+			bPrepareResult = false;
+
+			reset();
+		} else if (_buffer.isNull())
+		{
+			rebuildHWBuffer();
+		}
+
+		_count = nNewRequiredSize;
+
+		return bPrepareResult;
+	}
+
+	bool DynamicRenderable::SurfaceIndexData::prepare( const char lod, const size_t nStitchFlags, const size_t nIndexCount )
+	{
+		Resolution & res = *_pvResolutions[lod];
+		Resolution::Range * pRange = res[nStitchFlags];
+
+		if (pRange != NULL)
+			return true;
+		else
+		{
+			bool bResult = prepare(nIndexCount);
+			res.insert(nStitchFlags, _count - nIndexCount, nIndexCount);
+			return bResult;
+		}
+	}
+
+	void DynamicRenderable::SurfaceIndexData::reset()
+	{
+		for (unsigned i = 0; i < _nResCount; ++i)
+		{
+			_pvResolutions[i] ->clear();
+		}
+		_count = 0;
+
+		if (_bReferenced)
+		{
+			_buffer.setNull();
+			_bReferenced = false;
+		}
+	}
+
+	void DynamicRenderable::SurfaceIndexData::clear()
+	{
+		reset();
+		_buffer.setNull();
+		_capacity = 0;
+	}
+
+	DynamicRenderable::SurfaceIndexData::SurfaceIndexData( const unsigned nResolutionCount, VertexDeclaration * pVtxDecl ) 
+		: _nResCount(nResolutionCount), _pvResolutions(new Resolution * [nResolutionCount]), 
+		  _capacity(0), _count(0), _bReferenced(false)
+	{
+		for (unsigned c = 0; c < nResolutionCount; ++c)
+			_pvResolutions[c] = new Resolution(pVtxDecl);
+	}
+
+	DynamicRenderable::SurfaceIndexData::SurfaceIndexData( const SurfaceIndexData & copy ) 
+	:	_pvResolutions( new Resolution * [copy._nResCount]),
+		_buffer(copy._buffer),
+		_capacity(copy._capacity),
+		_count(copy._count),
+		_nResCount(copy._nResCount),
+		_bReferenced(true)
+	{
+		for (unsigned i = 0; i < _nResCount; ++i)
+			_pvResolutions[i] = new Resolution(*copy._pvResolutions[i]);
+	}
+
+	DynamicRenderable::SurfaceIndexData::SurfaceIndexData( SurfaceIndexData && move )
+	:	_pvResolutions( move._pvResolutions ),
+		_buffer(move._buffer),
+		_capacity(move._capacity),
+		_count(move._count),
+		_nResCount(move._nResCount),
+		_bReferenced(move._bReferenced)
+	{
+		move._pvResolutions = NULL;
+	}
+
+	DynamicRenderable::SurfaceIndexData::~SurfaceIndexData()
+	{
+		if (_pvResolutions != NULL)
+		{
+			for (unsigned c = 0; c < _nResCount; ++c)
+				delete _pvResolutions[c];
+
+			delete [] _pvResolutions;
+		}
+	}
+
+	DynamicRenderable::SurfaceIndexData::Resolution::Range * DynamicRenderable::SurfaceIndexData::range( const char lod, const size_t stitches )
+	{
+		Resolution & res = *_pvResolutions[lod];
+		return res[stitches];
+	}
+	
+	const DynamicRenderable::SurfaceIndexData::Resolution::Range * DynamicRenderable::SurfaceIndexData::range( const char lod, const size_t stitches ) const
+	{
+		const Resolution & res = *_pvResolutions[lod];
+		return res[stitches];
+	}
+
+	const DynamicRenderable::SurfaceIndexData * DynamicRenderable::SurfaceIndexData::shallowCopy() const
+	{
+		_bReferenced = true;
+		return new SurfaceIndexData(*this);
+	}
+
+	void DynamicRenderable::SurfaceIndexData::rebuildHWBuffer()
+	{
+		_buffer =
+			HardwareBufferManager::getSingleton().createIndexBuffer(
+				HardwareIndexBuffer::IT_16BIT,
+				_capacity,
+				HardwareBuffer::HBU_DYNAMIC_WRITE_ONLY,
+				DYNAMIC_RENDERABLE_SHADOW_BUFFERED
+			);
+	}
+
+
+	DynamicRenderable::SurfaceIndexData::Resolution::Range::Range( const size_t offset, const size_t length ) 
+		: offset(offset), length(length)
+	{
+
+	}
+
+	DynamicRenderable::SurfaceIndexData::Resolution::Range::Range()
+	{
+
+	}
+
+
+	DynamicRenderable::Mesh::Mesh( const unsigned nResolutionCount, VertexDeclaration * pVtxDecl ) 
+		: vertices(pVtxDecl), indices(nResolutionCount, pVtxDecl)
+	{}
+
+	void DynamicRenderable::Mesh::clear()
+	{
+		vertices.clear();
+		indices.clear();
+	}
+
+	const DynamicRenderable::ShallowMesh * DynamicRenderable::Mesh::shallowCopy() const
+	{
+		return new ShallowMesh(
+			vertices.shallowCopy(),
+			indices.shallowCopy()
+		);
+	}
+
+	DynamicRenderable::ShallowMesh::ShallowMesh( const SurfaceVertexData * pVertices, const SurfaceIndexData * pIndices )
+		: vertices(pVertices), indices(pIndices)
+	{}
+	DynamicRenderable::ShallowMesh::~ShallowMesh()
+	{
+		delete vertices;
+		delete indices;
 	}
 
 }///namespace Ogre

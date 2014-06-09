@@ -310,14 +310,20 @@ namespace Ogre
 				pISR->getMetaWorldFragment() ->factory->surfaceFlags,
 				enStitches, pISR->getVertexBufferCapacity()
 			);
-			if (_bResetHWBuffers)
+			if (_bResetVertexBuffer)
 			{
-				direct.meshOp.clear(IBufferManager::BD_GPU);
+				direct.meshOp.clearVertices(IBufferManager::BD_GPU);
 			}
+			if (_bResetIndexBuffer)
+			{
+				direct.meshOp.clearIndices(IBufferManager::BD_GPU);
+			}
+
 			pISR->populateBuffers(
 				_pMainVtxElems, 
 				direct, 
-				_bResetHWBuffers, 
+				_bResetVertexBuffer, 
+				_bResetIndexBuffer,
 				_pMainVtxElems->vertexShipment.size(), 
 				_pMainVtxElems->triangles.size() * 3
 			);
@@ -337,12 +343,13 @@ namespace Ogre
 		SharedPtr< HardwareIsoVertexShadow > & pShadow, 
 		const size_t nSurfaceFlags,
 		const Touch3DFlags enStitches, 
-		const size_t nVertexBufferCapacity 
+		const size_t nVertexBufferCapacity
 	)
 	{
 		oht_assert_threadmodel(ThrMdl_Single);
 
-		_bResetHWBuffers = false;
+		_bResetIndexBuffer = 
+		_bResetVertexBuffer = false;
 		_pShadow = pShadow;
 		_pMeshOp = pMeshOp;
 		_nLOD = pMeshOp->resolution->lod;
@@ -354,7 +361,8 @@ namespace Ogre
 		_debugs = debugs;
 #endif // _DEBUG
 
-		_nHWBufPos = _pMeshOp->nextVertexIndex();
+		_nVertexBufPos = _pMeshOp->nextVertexIndex();
+		_nIndexBufFree = _pMeshOp->indices->free();
 		_vBorderIVP = _pMeshOp->resolution->borderIsoVertexProperties;
 		_vCenterIVP = _pMeshOp->resolution->middleIsoVertexProperties;
 		_pMainVtxElems->clear();
@@ -423,14 +431,17 @@ namespace Ogre
 			but the results look worse, needs work. */
 		//alignTransitionVertices();
 
-		const size_t nRequiredHWBufferCapacity = _nHWBufPos + _pMainVtxElems->vertexShipment.size();
-		if (nRequiredHWBufferCapacity > nVertexBufferCapacity)
-		{
-			OHT_DBGTRACE("Buffer resized, " << nRequiredHWBufferCapacity << " > " << nVertexBufferCapacity);
-				
-			_bResetHWBuffers = true;
+		_bResetIndexBuffer = (_pMainVtxElems->indexCount() > _nIndexBufFree);
 
-			_nHWBufPos = 0;
+		const size_t nRequiredVertexBufferCapacity = _nVertexBufPos + _pMainVtxElems->vertexShipment.size();
+		if (nRequiredVertexBufferCapacity > nVertexBufferCapacity)
+		{
+			OHT_DBGTRACE("Buffer resized, " << nRequiredVertexBufferCapacity << " > " << nVertexBufferCapacity);
+				
+			_bResetIndexBuffer =
+			_bResetVertexBuffer = true;
+
+			_nVertexBufPos = 0;
 			_pMainVtxElems->rollback();
 
 			for (unsigned s = 0; s < CountOrthogonalNeighbors; ++s)
@@ -800,7 +811,7 @@ namespace Ogre
 
 				OgreAssert(_pMainVtxElems->indices[ivi] == HWVertexIndex(~0), "Expected unallocated HW iso-vertex index");
 				// Assign the next index in the hardware vertex buffer to this iso-vertex
-				_pMainVtxElems->indices[ivi] = _nHWBufPos++;
+				_pMainVtxElems->indices[ivi] = _nVertexBufPos++;
 				_pMainVtxElems->vertexShipment.push_back(ivi);
 				OHT_ISB_DBGTRACE("MarshalRegular " << ivi << " to HWIdx " << (_nHWBufPos - 1) << ", position=" << _pMainVtxElems->positions[ivi]);
 			}
@@ -842,7 +853,7 @@ namespace Ogre
 				);
 
 				// Assign the next index in the hardware vertex buffer to this iso vertex
-				_pMainVtxElems->indices[ivi] = _nHWBufPos++;
+				_pMainVtxElems->indices[ivi] = _nVertexBufPos++;
 				_pMainVtxElems->vertexShipment.push_back(ivi);
 				OHT_ISB_DBGTRACE("MarshalTransition " << ivi << " to HWIdx " << (_nHWBufPos - 1) << ", position=" << _pMainVtxElems->positions[ivi]);
 			}
@@ -1313,8 +1324,10 @@ namespace Ogre
 	{
 		oht_assert_threadmodel(ThrMdl_Background);
 
-		if (_bResetHWBuffers)
-			++queue.resetHWBuffers;
+		if (_bResetVertexBuffer)
+			++queue.resetVertexBuffer;
+		if (_bResetIndexBuffer)
+			++queue.resetIndexBuffer;
 
 		for (IsoVertexVector::const_iterator i = _pMainVtxElems->vertexShipment.begin(); i != _pMainVtxElems->vertexShipment.end(); ++i)
 		{

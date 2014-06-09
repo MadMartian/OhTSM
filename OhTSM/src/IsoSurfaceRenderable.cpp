@@ -48,7 +48,7 @@ namespace Ogre
 	IsoSurfaceRenderable::IsoSurfaceRenderable(RenderManager * pRendMan, VertexDeclaration * pVtxDecl, MetaFragment::Container * pMWF, const size_t nLODLevels, const Real fPixelError, const Ogre::String & sName /*= ""*/)
 	:	DynamicRenderable(pVtxDecl, RenderOperation::OT_TRIANGLE_LIST, true, nLODLevels, fPixelError, sName), 
 		_pRendMan(pRendMan), _pMWF(pMWF), _bbox(pMWF->acquireBasicInterface().block->getBoxSize()), _pShadow(new HardwareIsoVertexShadow(nLODLevels)), 
-		_vtxdata0(pVtxDecl), _t3df0(T3DS_None), _t3df(T3DS_None), _lod0(-1), _lod(-1)
+		_pMesh0(NULL), _t3df0(T3DS_None), _t3df(T3DS_None), _lod0(-1), _lod(-1), _pRange0(NULL)
 	{
 #ifdef _DISPDBG
 		_bBoxDisplay = false;
@@ -59,6 +59,7 @@ namespace Ogre
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
 		OHT_DBGTRACE("Delete " << this);
+		delete _pMesh0;
 	}
 
 #ifdef _DEBUG
@@ -69,11 +70,13 @@ namespace Ogre
 		oht_assert_threadmodel(ThrMdl_Main);
 
 		// TODO: Check return value of prepare vertex buffer call
-		prepareVertexBuffer(queue.requiredVertexCount(), queue.resetHWBuffers);
+		prepareVertexBuffer(queue.requiredVertexCount(), queue.resetVertexBuffer || queue.resetIndexBuffer);
 		prepareIndexBuffer(queue.meshOp.resolution->lod, queue.stitches, queue.indexQueue.size());
 
-		HardwareVertexBufferSharedPtr pVtxBuffer = getVertexData()->getVertexBuffer();
-		HardwareIndexBufferSharedPtr pIdxBuffer = getIndexData(queue.meshOp.resolution->lod, queue.stitches)->getIndexData()->indexBuffer;
+		Mesh * pMesh = getMesh();
+		HardwareVertexBufferSharedPtr pVtxBuffer = pMesh->vertices.getVertexBuffer();
+		SurfaceIndexData::Resolution::Range * pIdxRange = pMesh->indices.range(queue.meshOp.resolution->lod, queue.stitches);
+		HardwareIndexBufferSharedPtr pIdxBuffer = pMesh->indices.getIndexBuffer();
 
 		const MetaVoxelFactory::VertexDeclarationElements * pVtxDeclElems = _pMWF->factory->getVertexDeclarationElements();
 		const size_t nVertexByteSize = _pMWF->factory->getVertexSize();
@@ -124,10 +127,13 @@ namespace Ogre
 
 		if (!queue.indexQueue.empty())
 		{
-			OgreAssert(pIdxBuffer != _idx0.getIndexData()->indexBuffer, "Overwriting index-buffer currently in-use");
-
+			OgreAssert(pIdxRange->offset + pIdxRange->length < pIdxBuffer->getNumIndexes(), "Tried to lock unbounded range of index buffer");
 			HWVertexIndex * pIndex = static_cast< HWVertexIndex * > (
-				pIdxBuffer->lock(HardwareBuffer::HBL_DISCARD)
+				pIdxBuffer->lock(
+					pIdxRange->offset * sizeof(HWVertexIndex), 
+					pIdxRange->length * sizeof(HWVertexIndex), 
+					HardwareBuffer::HBL_DISCARD
+				)
 			);
 			for (BuilderQueue::IndexList::const_iterator i = queue.indexQueue.begin(); i != queue.indexQueue.end(); ++i)
 				*pIndex++ = *i;
@@ -142,15 +148,24 @@ namespace Ogre
 #ifdef _DEBUG
 #pragma optimize("gtpy", on)
 #endif
-	void IsoSurfaceRenderable::populateBuffers( IsoVertexElements * pVtxElems, HardwareShadow::HardwareIsoVertexShadow::DirectAccess & direct, const bool bResetHWBuffers, const size_t nNewVertexCount, const size_t nIndexCount )
+	void IsoSurfaceRenderable::populateBuffers( 
+		IsoVertexElements *												pVtxElems, 
+		HardwareShadow::HardwareIsoVertexShadow::DirectAccess &			direct, 
+		const bool														bResetVertexBuffer, 
+		const bool														bResetIndexBuffer, 
+		const size_t													nNewVertexCount, 
+		const size_t													nIndexCount
+	)
 	{
 		oht_assert_threadmodel(ThrMdl_Main);
 
-		prepareVertexBuffer(nNewVertexCount + direct.meshOp.nextVertexIndex(), bResetHWBuffers);
+		prepareVertexBuffer(nNewVertexCount + direct.meshOp.nextVertexIndex(), bResetVertexBuffer || bResetIndexBuffer);
 		prepareIndexBuffer(direct.meshOp.resolution->lod, direct.stitches, nIndexCount);
 		const MetaVoxelFactory::VertexDeclarationElements * const pVtxDeclElems = _pMWF->factory->getVertexDeclarationElements();
-		HardwareVertexBufferSharedPtr pVtxBuffer = getVertexData()->getVertexBuffer();
-		HardwareIndexBufferSharedPtr pIdxBuffer = getIndexData(direct.meshOp.resolution->lod, direct.stitches) ->getIndexData()->indexBuffer;
+		Mesh * pMesh = getMesh();
+		HardwareVertexBufferSharedPtr pVtxBuffer = pMesh->vertices.getVertexBuffer();
+		SurfaceIndexData::Resolution::Range * pIdxRange = pMesh->indices.range(direct.meshOp.resolution->lod, direct.stitches);
+		HardwareIndexBufferSharedPtr pIdxBuffer = pMesh->indices.getIndexBuffer();
 
 		const size_t nVertexByteSize = _pMWF->factory->getVertexSize();
 		const float fVertScale =
@@ -209,8 +224,13 @@ namespace Ogre
 		if (!pVtxElems->triangles.empty())
 		{
 			HWVertexIndex * pIndex = static_cast< HWVertexIndex * > (
-				pIdxBuffer->lock(HardwareBuffer::HBL_DISCARD)
+				pIdxBuffer->lock(
+					pIdxRange->offset * sizeof(HWVertexIndex), 
+					pIdxRange->length * sizeof(HWVertexIndex), 
+					HardwareBuffer::HBL_DISCARD
+				)
 			);
+			OgreAssert(pIdxRange->length == pVtxElems->indexCount(), "Buffer range did not match vertex queue index length... thingy...");
 			for (IsoTriangleVector::const_iterator i = pVtxElems->triangles.begin(); i != pVtxElems->triangles.end(); ++i)
 			{
 				*pIndex++ = pVtxElems->indices[i->vertices[0]];
@@ -239,37 +259,37 @@ namespace Ogre
 
 		DynamicRenderable::getRenderOperation(op);
 
-		SurfaceVertexData * pVtxDataUse = _vtxdata0.isEmpty() ? NULL : &_vtxdata0;
-		MeshData::Index * pIdxUse = _idx0.isEmpty() ? NULL : &_idx0;
+		const ShallowMesh * pMeshUse = _pMesh0;
 
 		if ((_lod != _lod0 || _t3df != _t3df0) && _pRendMan->queue(getRenderQueueGroup()) ->isCurrentRenderStateAvailable() && isConfigurationBuilt(_lod, _t3df))
 		{
-			pVtxDataUse = getVertexData();
-			pIdxUse = getIndexData(_lod, _t3df);
-
-			_vtxdata0 = *pVtxDataUse;
-			_idx0 = *pIdxUse;
+			delete _pMesh0;
+			_pMesh0 = pMeshUse = getMesh()->shallowCopy();
+			_pRange0 = pMeshUse->indices->range(_lod, _t3df);
 
 			_lod0 = _lod;
 			_t3df0 = _t3df;
 		}
 
-		if (pVtxDataUse != NULL)
+		if (pMeshUse != NULL && _pRange0 != NULL)
 		{
-			op.vertexData->vertexBufferBinding->setBinding(0, pVtxDataUse->getVertexBuffer());
-			op.vertexData->vertexCount = pVtxDataUse->getCount();
-		}
-		if (pIdxUse != NULL)
-		{
+			op.vertexData->vertexBufferBinding->setBinding(0, pMeshUse->vertices->getVertexBuffer());
+			op.vertexData->vertexCount = pMeshUse->vertices->getCount();
+
 			op.useIndexes = true;
-			op.indexData = pIdxUse->getIndexData();
+
+			_idxdata.indexStart = _pRange0->offset;
+			_idxdata.indexCount = _pRange0->length;
+			_idxdata.indexBuffer = pMeshUse->indices->getIndexBuffer();
+
+			op.indexData = &_idxdata;
 		} else
 			op.useIndexes = false;
 
 #if defined(_DISPDBG) && defined(_CHECK_HW_BUFFERS)
-		if (pVtxDataUse != NULL && pIdxUse != NULL)
+		if (pMeshUse != NULL)
 		{
-			if (!_pRendMan->checkBuffers(op.indexData, pVtxDataUse->getVertexBuffer(), vertexDeclaration(), const_cast< const MetaFragment::Container * > (_pMWF)->acquire< MetaFragment::Interfaces::const_Basic > () .block->meta.scale * float(1 << _lod)))
+			if (!_pRendMan->checkBuffers(op.indexData, pMeshUse->vertices.getVertexBuffer(), vertexDeclaration(), const_cast< const MetaFragment::Container * > (_pMWF)->acquire< MetaFragment::Interfaces::const_Basic > () .block->meta.scale * float(1 << _lod)))
 			{
 				if (!_bBoxDisplay)
 				{
@@ -294,7 +314,7 @@ namespace Ogre
 		if (upgraded.requestConfiguration(_lod, _t3df))
 			return true;
 
-		return _idx0.isEmpty() || _vtxdata0.isEmpty();
+		return _pMesh0 == NULL;
 	}
 
 	void IsoSurfaceRenderable::computeMinimumLevels2Distances( const Real & fErrorFactorSqr, Real * pfMinLev2DistSqr, const size_t nCount )
@@ -318,6 +338,13 @@ namespace Ogre
 		_t3df0 = T3DS_None;
 		_lod0 = -1;
 		return DynamicRenderable::prepareVertexBuffer(vertexCount, bClearIndicesToo);
+	}
+
+	bool IsoSurfaceRenderable::prepareIndexBuffer( const unsigned nLOD, const size_t nStitchFlags, const size_t indexCount )
+	{
+		_t3df0 = T3DS_None;
+		_lod0 = -1;
+		return DynamicRenderable::prepareIndexBuffer(nLOD, nStitchFlags, indexCount);
 	}
 
 	void IsoSurfaceRenderable::detachFromParent( void )

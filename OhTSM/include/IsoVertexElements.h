@@ -114,6 +114,9 @@ namespace Ogre
 
 		/// Clears the indices member and clears the vertex shipment and triangle queues
 		virtual void clear();
+
+		/// Counts the number of triangles from the "triangles" member and multiplies it by three
+		virtual size_t indexCount() const;
 	};
 }
 

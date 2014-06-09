@@ -62,6 +62,9 @@ page loading.
 
 KNOWN ISSUES
 ============
+(09-Jun-2014)
+-   Geometry batching improved, now only one vertex and index buffer per surface
+
 (10-May-2013)
 -	Only ray scene queries are supported, other types of scene queries are not 
 	implemented yet

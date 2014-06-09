@@ -80,55 +80,110 @@ namespace Ogre
 		void /*SimpleRenderable::*/_updateRenderQueue(RenderQueue* queue);
 
 	protected:
-		/** Defines hardware buffers and properties thereof distributed by LOD and stitch configuration */
-		class MeshData
+		/// Top-level mesh index list container that manages the hardware buffer and relationship with the individual triangle list configurations
+		class SurfaceIndexData
 		{
-		private:
-			MeshData (const MeshData & ); // Copy not allowed
-
 		public:
-			/** Defines triangle index data according to a stitch configuration */
-			class Index
+			/** Defines the ranges within the index hardware buffer that each correspond to a stitch configuration */
+			class Resolution
 			{
+			public:
+				/** Simple object defining a range starting from an offset and proceeding for a length */
+				class Range 
+				{
+				public:
+					size_t offset, length;
+
+					Range();
+					Range(const size_t offset, const size_t length);
+				};
+
 			private:
-				/// The IndexData object
-				IndexData _data;
-				/// Current capacity of the hardware index buffer
-				size_t _capacity;
+				typedef std::map< size_t, Range > RangeMap;
+
+				/// The ranges within the index hardware buffer that each correspond to a stitch configuration
+				RangeMap _indices;
 
 			public:
-				Index();
-				Index (const Index & copy);	// Copy does not copy the indexBuffer contained in the _data member
-				Index (Index && move);
-				~Index();
+				Resolution (const Resolution & copy);
+				Resolution (Resolution && move);
+				Resolution (VertexDeclaration * pVtxDecl);
+				~Resolution();
 
-				/// Destroys the hardware index buffer
-				virtual void clear();
-				/// Ensures the specified minimum capacity (index count, not byte size) of the hardware buffer, creating a newer bigger one if necessary
-				bool prepare(const size_t nIndexCount);
+				/// Wipes the IndexData map clean
+				void clear();
 
-				/// Determines if the hardware index buffer is empty or not
-				bool isEmpty () const { return _data.indexBuffer.isNull(); }
-				/// Returns the IndexData object
-				IndexData * getIndexData () { return &_data; }
+				/// Returns the range for the specified stitches, returns NULL if there is no such range defined yet
+				const Range * operator [] (const size_t stitches) const;
 
-				/// Copies the object, does not duplicate the index hardware buffer in the _data member, just references it
-				Index & operator = (const Index & copy);
+				/// Returns the range for the specified stitches, returns NULL if there is no such range defined yet
+				Range * operator [] (const size_t stitches);
+
+				/// Defines a range in the map according to the specified stitches
+				void insert(const size_t stitches, const size_t nOffset, const size_t nCount);
 			};
-			typedef std::map< size_t, Index > IndexDataMap;
 
-			/// Maps stitch configuration to Index objects (see above)
-			IndexDataMap indices;
+		private:
+			/// Array of index list information distributed by LOD
+			Resolution ** _pvResolutions;
+			/// The hardware index buffer
+			HardwareIndexBufferSharedPtr _buffer;
+			/// Current capacity of, and element count of the hardware index buffer
+			size_t _capacity, _count;
+			/// Resolution count
+			unsigned int _nResCount;
+			/// Ensures the hardware index buffer meets the minimum size, if not then the buffer is resized resulting in a subsequent call to reset()
+			bool prepare (const size_t nIndexCount);
+			/// Tracks whether this object has endured a shallow copy
+			mutable bool _bReferenced;
 
-			MeshData (MeshData && move);
-			MeshData (VertexDeclaration * pVtxDecl);
-			~MeshData();
+			/**
+			 * Shallow copy constructor, not permitted by outside contract subscribers.
+			 * @remarks This does not copy the hardware index buffer, only the reference is copied.
+			 */
+			SurfaceIndexData (const SurfaceIndexData & copy);
 
-			/// Ensures minimum capacity of the specified index count for the index buffer identified by the specified stitch flags
-			bool prepareIndexBuffer(const size_t nStitchFlags, const size_t nIndexCount);
-			
-			/// Destroys all hardware buffers
+		public:
+			SurfaceIndexData (const unsigned nResolutionCount, VertexDeclaration * pVtxDecl);
+			SurfaceIndexData (SurfaceIndexData && move);
+			~SurfaceIndexData();
+
+			/**
+			 * Performs a shallow copy of this object and returns a const shallow copy that may not be modified.  The way the 
+			 * algorithm works is that the bounded range of the buffer that is referenced by software is defined in software 
+			 * and is copied, and only additions appended to the buffer outside the bounded range defined by software are
+			 * permitted (alterations to ranges that fall within the software range are not allowed).  There is one exception,
+			 * in the case of a reset, the bounded range of the hardware buffer can be reused.  At that point the buffer belonging
+			 * to this object will be recreated with the same size as the previous one so that the copy will not be affected. 
+			 * This only occurs if this object has endured a shallow copy. */
+			const SurfaceIndexData * shallowCopy() const;
+
+			// Acquires the range of the index buffer designated for the specified resolution and configuration, if it does not exist the return value is NULL.
+			Resolution::Range * range (const char lod, const size_t stitches);
+			// Acquires the range of the index buffer designated for the specified resolution and configuration, if it does not exist the return value is NULL.
+			const Resolution::Range * range (const char lod, const size_t stitches) const;
+
+			/// Determines if the hardware index buffer is empty or not
+			bool isEmpty () { return _buffer.isNull(); }
+			/// Current number of indices stored in the hardware buffer
+			size_t getCount() const { return _count; }
+			/// Actual capacity of the hardware buffer (element count, not byte size)
+			size_t getCapacity() const { return _capacity; }
+			/// Retrieve the hardware index buffer
+			HardwareIndexBufferSharedPtr getIndexBuffer () { return _buffer; }
+			/// Retrieve the hardware index buffer
+			const HardwareIndexBufferSharedPtr getIndexBuffer () const { return _buffer; }
+			/// Resets the software state for all these resolutions
+			virtual void reset ();
+			/// Destroys the index hardware buffer
 			virtual void clear();
+		
+			/* Prepare a slot/slice in the hardware buffer for the specified resolution configuration unless it already exists 
+			@return True if there was room or the configuration already exists, false if the hardware buffer had to be resized */
+			bool prepare (const char lod, const size_t nStitchFlags, const size_t nIndexCount);
+
+			void rebuildHWBuffer();
+
 		};
 
 		/** Defines a hardware vertex buffer used by this renderable */
@@ -139,17 +194,44 @@ namespace Ogre
 			HardwareVertexBufferSharedPtr _buffer;
 			/// Current capacity of, element count, and element size of the hardware vertex buffer
 			size_t _capacity, _count, _elemsize;
+			/// Tracks whether this object has endured a shallow copy
+			mutable bool _bReferenced;
+
+			/**
+			 * Shallow copy constructor, not permitted by outside contract subscribers.
+			 * @remarks This does not copy the hardware vertex buffer, only the reference is copied. */
+			SurfaceVertexData(const SurfaceVertexData & copy); 
 
 		public:
 			SurfaceVertexData(VertexDeclaration * pVtxDecl);
-			SurfaceVertexData(const SurfaceVertexData & copy); // Does not copy the hardware vertex buffer, only references it
+			/**
+			 * Pseudo-copy constructor.  
+			 * @remarks This does not copy the hardware vertex buffer, only the reference is copied.  However, the way the 
+			 * algorithm works is that the bounded range of the buffer that is referenced by software is defined in software 
+			 * and is copied, and only additions appended to the buffer outside the bounded range defined by software are
+			 * permitted (alterations to ranges that fall within the software range are not allowed).  However it should 
+			 * be noted that it isn't thread-safe, but then hardware buffers aren't thread safe anyway.
+			 */
 			SurfaceVertexData(SurfaceVertexData && move);
 			~SurfaceVertexData();
 
+			/* Performs a shallow copy of this object and returns a const shallow copy that may not be modified.  The way the 
+			* algorithm works is that the bounded range of the buffer that is referenced by software is defined in software 
+			* and is copied, and only additions appended to the buffer outside the bounded range defined by software are
+			* permitted (alterations to ranges that fall within the software range are not allowed).  There is one exception,
+			* in the case of a reset, the bounded range of the hardware buffer can be reused.  At that point the buffer belonging
+			* to this object will be recreated with the same size as the previous one so that the copy will not be affected. 
+			* This only occurs if this object has endured a shallow copy. */
+			const SurfaceVertexData * shallowCopy() const;
+
+			/// Resets the software state of the hardware buffer
+			virtual void reset();
 			/// Destroys the hardware vertex buffer
 			virtual void clear();
 			/// Ensures minimum capacity of the hardware vertex buffer creating a newer bigger one if necessary
 			bool prepare(const size_t nVertexCount);
+
+			void rebuildHWBuffer();
 
 			/// Determines if the hardware vertex buffer is empty or not
 			bool isEmpty () { return _buffer.isNull(); }
@@ -159,9 +241,41 @@ namespace Ogre
 			size_t getCapacity() const { return _capacity; }
 			/// Retrieve the hardware vertex buffer
 			HardwareVertexBufferSharedPtr getVertexBuffer () { return _buffer; }
+			/// Retrieve the hardware vertex buffer
+			const HardwareVertexBufferSharedPtr getVertexBuffer () const { return _buffer; }
+		};
 
-			// Copy the object, does not copy the hardware vertex buffer, only references it
-			SurfaceVertexData & operator = (const SurfaceVertexData & copy);
+		/// A shallow copy of the original mesh
+		class ShallowMesh
+		{
+		public:
+			const SurfaceVertexData * vertices;
+			const SurfaceIndexData * indices;
+
+			/** Initializes the class members passing pointer ownership to this object.  
+			 * @remarks Caller must not delete these pointers. */
+			ShallowMesh (const SurfaceVertexData * pVertices, const SurfaceIndexData * pIndices);
+			~ShallowMesh();
+		};
+
+		/** Aggregates the combined data pertinent to the mesh (indices and vertices) */
+		class Mesh
+		{
+		private:
+			/// Deep copy not permitted
+			Mesh (const Mesh &);
+
+		public:
+			SurfaceVertexData vertices;
+			SurfaceIndexData indices;
+
+			Mesh(const unsigned nResolutionCount, VertexDeclaration * pVtxDecl);
+
+			/// Clears both vertices and indices, the entire software state for the mesh
+			void clear();
+
+			/// Performs a shallow copy of this object, see the documentation for the corresponding method of each of the members
+			const ShallowMesh * shallowCopy () const;
 		};
 
 	private:
@@ -173,11 +287,8 @@ namespace Ogre
 		/// Stores the world transform for this renderable
 		Matrix4 _txWorld;
 
-		/// An array of MeshData object pointers indexed by LOD
-		MeshData ** _pvMeshData;
-
-		/// The vertex data for all vertices owned by this surface
-		SurfaceVertexData * _pVertexData;
+		/// The vertex and index data that make-up the surface and all of its resolutions and resolution configurations
+		Mesh * _pMesh;
 
 		/// The vertex declaration used by all hardware buffers here
 		VertexDeclaration * const _pVtxDecl;
@@ -190,18 +301,15 @@ namespace Ogre
 		inline VertexBufferBinding * vertexBufferBinding() const { return _pVtxBB; }
 
 		/// Ensures minimum capacity (index count) of the hardware index buffer linked by the specified LOD and stitch configuration
-		bool prepareIndexBuffer(const unsigned nLOD, const size_t nStitchFlags, const size_t indexCount);
+		virtual bool prepareIndexBuffer(const unsigned nLOD, const size_t nStitchFlags, const size_t indexCount);
 		/** Ensures minimum capacity (vertex element count) of the hardware vertex buffer
 		@param nVtxCount The minimum capacity of the hardware vertex buffer even if it has to create a newer bigger buffer
 		@param bClearIndicesToo Force erasure of all hardware index buffers used by the specified LOD
 		*/
-		bool prepareVertexBuffer(const size_t nVtxCount, bool bClearIndicesToo );
+		virtual bool prepareVertexBuffer(const size_t nVtxCount, bool bClearIndicesToo );
 
-		/// Retrieves the index and vertex data for the specified level of detail with specified stitch configuration
-		virtual MeshData::Index * getIndexData( const int nLOD, const size_t nStitchFlags );
-
-		/// Retrieves the hardware buffer vertex data for the specified LOD
-		SurfaceVertexData * getVertexData ();
+		/// Retrieves the mesh data
+		virtual Mesh * getMesh ();
 
 		/// Erases all index and vertex buffers in preparation for creating brand new ones
 		virtual void wipeBuffers ();

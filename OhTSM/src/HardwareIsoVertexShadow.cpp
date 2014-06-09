@@ -83,6 +83,7 @@ namespace Ogre
 				_vpResolutions[i] = new LOD(i);
 
 			_pVertices = new Vertices();
+			_pIndices = new Indices();
 		}
 
 		HardwareIsoVertexShadow::~HardwareIsoVertexShadow()
@@ -93,6 +94,7 @@ namespace Ogre
 				 delete [] _vpResolutions;
 				 delete _pBuilderQueue;
 				 delete _pVertices;
+				 delete _pIndices;
 			}
 		}
 
@@ -106,7 +108,8 @@ namespace Ogre
 					_pBuilderQueue = NULL;
 					// No break, continue to next clause
 				case IBufferManager::BD_Shadow:
-					clear(depth);
+					clearVertices(depth);
+					clearIndices(depth);
 					break;  // Now break, we're done
 				}
 			}
@@ -119,32 +122,40 @@ namespace Ogre
 				_pBuilderQueue, 
 				_vpResolutions[nLOD], 
 				_pVertices, 
+				_pIndices,
 				this, 
 				_pBuilderQueue == NULL ? NULL :
-					static_cast< ResetHWBuffersFlag * > (_pBuilderQueue->pResetHWBuffers) 
+					static_cast< ResetVertexBufferFlag * > (_pBuilderQueue->pResetVertexHWBuffer) 
 						->queryInterface< RoleSecureFlag::IClearFlag > (), 
+				_pBuilderQueue == NULL ? NULL :
+					static_cast< ResetIndexBufferFlag * > (_pBuilderQueue->pResetIndexHWBuffer)
+						->queryInterface< RoleSecureFlag::IClearFlag > (),
 				enStitches
 			);
 		}
  
 		HardwareIsoVertexShadow::ProducerQueueAccess HardwareIsoVertexShadow::requestProducerQueue(const unsigned char nLOD, const Touch3DFlags enStitches)
 		{
-			ResetHWBuffersFlag * pFlag = new ResetHWBuffersFlag();
+			ResetIndexBufferFlag * pIdxFlag = new ResetIndexBufferFlag();
+			ResetVertexBufferFlag * pVtxFlag = new ResetVertexBufferFlag(pIdxFlag);
 			return ProducerQueueAccess (
 				boost::unique_lock< boost::shared_mutex > (_mutex),
 				_pBuilderQueue, 
 				_vpResolutions[nLOD], 
 				_pVertices, 
+				_pIndices,
 				this, 
 				enStitches,
-				pFlag->queryInterface< RoleSecureFlag::ISetFlag > (),
-				pFlag
+				pVtxFlag->queryInterface< RoleSecureFlag::ISetFlag > (),
+				pVtxFlag,
+				pIdxFlag->queryInterface< RoleSecureFlag::ISetFlag > (),
+				pIdxFlag
 			);
 		}
 
 		HardwareIsoVertexShadow::ReadOnlyAccess HardwareIsoVertexShadow::requestReadOnlyAccess( const unsigned char nLOD )
 		{
-			return ReadOnlyAccess (boost::shared_lock< boost::shared_mutex > (_mutex), _vpResolutions[nLOD], _pVertices, this);
+			return ReadOnlyAccess (boost::shared_lock< boost::shared_mutex > (_mutex), _vpResolutions[nLOD], _pVertices, _pIndices, this);
 		}
 
 		HardwareIsoVertexShadow::DirectAccess HardwareIsoVertexShadow::requestDirectAccess( const unsigned char nLOD, const Touch3DFlags enStitches )
@@ -152,68 +163,57 @@ namespace Ogre
 			return DirectAccess(_pBuilderQueue, 
 				_vpResolutions[nLOD], 
 				_pVertices, 
+				_pIndices,
 				this, 
 				enStitches
 			);
 		}
 
-		void HardwareIsoVertexShadow::clear( const BufferDepth depth, signed nLOD /*= -1*/ )
+		void HardwareIsoVertexShadow::clearYourMom( const BufferDepth depth )
 		{
-			if (depth == BD_GPU)
-			{
-				clear(BD_GPU);
-			}
-			else
-			{
-				clearLOD(depth, _vpResolutions[nLOD]);
-				clearVerts(depth);
-			}
+			clearIndices(depth);
+			clearVertices(depth);
 		}
 
-		void HardwareIsoVertexShadow::clear( const BufferDepth depth )
+		void HardwareIsoVertexShadow::clearVertices( const BufferDepth depth)
+		{
+			_pVertices->revmapIVI2HWVI.clear();
+		}
+
+		void HardwareIsoVertexShadow::clearIndices( const BufferDepth depth)
 		{
 			for (LOD ** ppLOD = _vpResolutions, ** ppX = &_vpResolutions[_nCountResolutions];
 				ppLOD < ppX;
 				++ppLOD
-			)
+				)
 			{
-				clearLOD(depth, *ppLOD);
-			}
-
-			clearVerts(depth);
-		}
-
-		void HardwareIsoVertexShadow::clearLOD( const BufferDepth depth, LOD * resolution )
-		{
-			switch (depth)
-			{
-			case BD_Shadow:
-				resolution->regCases.clear();
-				resolution->borderIsoVertexProperties.clear();
-				resolution->middleIsoVertexProperties.clear();
-				resolution->shadowed = false;
-				for (unsigned s = 0; s < CountOrthogonalNeighbors; ++s)
+				LOD * pResolution = *ppLOD;
+				switch (depth)
 				{
-					resolution->stitches[s] ->shadowed = false;
-					resolution->stitches[s] ->transCases.clear();
+				case BD_Shadow:
+					pResolution->regCases.clear();
+					pResolution->borderIsoVertexProperties.clear();
+					pResolution->middleIsoVertexProperties.clear();
+					pResolution->shadowed = false;
+					for (unsigned s = 0; s < CountOrthogonalNeighbors; ++s)
+					{
+						pResolution->stitches[s] ->shadowed = false;
+						pResolution->stitches[s] ->transCases.clear();
+					}
+					// Do not break, continue to BD_GPU clause:
+				case BD_GPU:
+					pResolution->gpued = false;
+					for (unsigned s = 0; s < CountOrthogonalNeighbors; ++s)
+					{
+						pResolution->stitches[s] ->gpued = false;
+					}
+					// TODO: Verify that this is safe, looks like HardwareIsoVertexShadow::clearLOD is always called in-tandem 
+					// from the main thread with code that directly clears the hardware buffers.
+					//_fResetHWFlag++;
+					break;	// Now break, we're done
 				}
-				// Do not break, continue to BD_GPU clause:
-			case BD_GPU:
-				resolution->gpued = false;
-				for (unsigned s = 0; s < CountOrthogonalNeighbors; ++s)
-				{
-					resolution->stitches[s] ->gpued = false;
-				}
-				// TODO: Verify that this is safe, looks like HardwareIsoVertexShadow::clearLOD is always called in-tandem 
-				// from the main thread with code that directly clears the hardware buffers.
-				//_fResetHWFlag++;
-				break;	// Now break, we're done
 			}
-		}
-
-		void HardwareIsoVertexShadow::clearVerts( BufferDepth depth )
-		{
-			_pVertices->revmapIVI2HWVI.clear();
+			_pIndices->clear();
 		}
 
 		HardwareIsoVertexShadow::ConsumerLock::QueueAccess::~QueueAccess()
@@ -225,34 +225,53 @@ namespace Ogre
 			}
 		}
 
-		HardwareIsoVertexShadow::ConsumerLock::QueueAccess::QueueAccess (BuilderQueue *& pBuilderQueue, RoleSecureFlag::IClearFlag * pClearResetHWBuffersFlag) 
+		HardwareIsoVertexShadow::ConsumerLock::QueueAccess::QueueAccess (
+			BuilderQueue *&					pBuilderQueue, 
+			RoleSecureFlag::IClearFlag *	pClearResetVertexBufferFlag, 
+			RoleSecureFlag::IClearFlag *	pClearResetIndexBufferFlag
+		) 
 		:	ConcurrentProducerConsumerQueueBase(pBuilderQueue), 
-			resetHWBuffers(*pClearResetHWBuffersFlag),
+			resetVertexBuffer(*pClearResetVertexBufferFlag),
+			resetIndexBuffer(*pClearResetIndexBufferFlag),
 			_bDeconstruct(false) 
 		{}
 
 		HardwareIsoVertexShadow::ConsumerLock::QueueAccess::QueueAccess( QueueAccess && move ) 
-		: ConcurrentProducerConsumerQueueBase(static_cast< QueueAccess && > (move)), _bDeconstruct(move._bDeconstruct), resetHWBuffers(move.resetHWBuffers)
+		: ConcurrentProducerConsumerQueueBase(static_cast< QueueAccess && > (move)), _bDeconstruct(move._bDeconstruct), 
+			resetVertexBuffer(move.resetVertexBuffer),
+			resetIndexBuffer(move.resetIndexBuffer)
 		{
 			move._bDeconstruct = false;
 		}
 
 		void HardwareIsoVertexShadow::ConsumerLock::QueueAccess::consume()
 		{
-			if (resetHWBuffers)
+			if (resetVertexBuffer)
 			{
-				meshOp.clear( IBufferManager::BD_GPU );
-				--resetHWBuffers;
+				meshOp.clearVertices( IBufferManager::BD_GPU );
+				--resetVertexBuffer;
+			}
+			if (resetIndexBuffer)
+			{
+				meshOp.clearIndices( IBufferManager::BD_GPU );
+				--resetIndexBuffer;
 			}
 			this->updateHardwareState(revmapIVI2HWVIQueue.begin(), revmapIVI2HWVIQueue.end());
 			_bDeconstruct = true;
 		}
 
-		HardwareIsoVertexShadow::ReadOnlyAccess::ReadOnlyAccess( boost::shared_lock< boost::shared_mutex > && lock, const LOD * pResolution, const Vertices * pVertices, IBufferManager * pBuffMan )
+		HardwareIsoVertexShadow::ReadOnlyAccess::ReadOnlyAccess( 
+			boost::shared_lock< boost::shared_mutex > && lock, 
+			const LOD * pResolution, 
+			const Vertices * pVertices, 
+			const Indices * pIndices,
+			IBufferManager * pBuffMan 
+		)
 			:	_lock(static_cast< boost::shared_lock< boost::shared_mutex > && > (lock)),
 				meshOp(
 					const_cast< LOD * > (pResolution), 
 					const_cast< Vertices * > (pVertices),
+					const_cast< Indices * > (pIndices),
 					pBuffMan
 				)
 		{}
@@ -264,25 +283,39 @@ namespace Ogre
 		HardwareIsoVertexShadow::ProducerQueueAccess::ProducerQueueAccess (
 			boost::unique_lock< boost::shared_mutex > && lock, 
 			BuilderQueue *& pBuilderQueue, 
-			LOD * pResolution, Vertices * pVertices, IBufferManager * pBuffMan, 
+			LOD * pResolution, Vertices * pVertices, Indices * pIndices, IBufferManager * pBuffMan, 
 			const Touch3DFlags enStitches,
-			RoleSecureFlag::ISetFlag * pSetResetHWBuffersFlag,
-			RoleSecureFlag::Flag * pResetHWBuffersFlag
+			RoleSecureFlag::ISetFlag *						pSetResetVertexBufferFlag, 
+			RoleSecureFlag::Flag *							pResetVertexBufferFlag,
+			RoleSecureFlag::ISetFlag *						pSetResetIndexBufferFlag, 
+			RoleSecureFlag::Flag *							pResetIndexBufferFlag
 		)
-		:	ConcurrentProducerConsumerQueueBase(reallocate(pBuilderQueue, pResolution, pVertices, pBuffMan, enStitches, pResetHWBuffersFlag)), 
-			resetHWBuffers(*pSetResetHWBuffersFlag),
+		:	ConcurrentProducerConsumerQueueBase(reallocate(pBuilderQueue, pResolution, pVertices, pIndices, pBuffMan, enStitches, pResetVertexBufferFlag, pResetIndexBufferFlag)), 
+			resetVertexBuffer(*pSetResetVertexBufferFlag),
+			resetIndexBuffer(*pSetResetIndexBufferFlag),
 			_lock(static_cast< boost::unique_lock<boost::shared_mutex> && > (lock))
 		{}
 
 		HardwareIsoVertexShadow::ProducerQueueAccess::ProducerQueueAccess( ProducerQueueAccess && move )
-		: ConcurrentProducerConsumerQueueBase(static_cast< ProducerQueueAccess && > (move)), _lock(static_cast< boost::unique_lock<boost::shared_mutex> && > (move._lock)),
-			resetHWBuffers(move.resetHWBuffers)
+		: ConcurrentProducerConsumerQueueBase(static_cast< ProducerQueueAccess && > (move)),
+			_lock(static_cast< boost::unique_lock<boost::shared_mutex> && > (move._lock)),
+			resetVertexBuffer(move.resetVertexBuffer),
+			resetIndexBuffer(move.resetIndexBuffer)
 		{}
 
-		BuilderQueue *& HardwareIsoVertexShadow::ProducerQueueAccess::reallocate( BuilderQueue *& pBuilderQueue, LOD * pResolution, Vertices * pVertices, IBufferManager * pBuffMan, const Touch3DFlags enStitches, RoleSecureFlag::Flag * pResetHWBuffersFlag )
+		BuilderQueue *& HardwareIsoVertexShadow::ProducerQueueAccess::reallocate( 
+			BuilderQueue *&						pBuilderQueue, 
+			LOD *								pResolution, 
+			Vertices *							pVertices, 
+			Indices *							pIndices, 
+			IBufferManager *					pBuffMan, 
+			const Touch3DFlags					enStitches, 
+			RoleSecureFlag::Flag *				pResetVertexBufferFlag, 
+			RoleSecureFlag::Flag *				pResetIndexBufferFlag 
+		)
 		{
 			delete pBuilderQueue;
-			return pBuilderQueue = new BuilderQueue(pResolution, pVertices, pBuffMan, enStitches, pResetHWBuffersFlag);
+			return pBuilderQueue = new BuilderQueue(pResolution, pVertices, pIndices, pBuffMan, enStitches, pResetVertexBufferFlag, pResetIndexBufferFlag);
 		}
 
 		BuilderQueue::VertexElement::VertexElement( 
@@ -326,18 +359,22 @@ namespace Ogre
 
 		HardwareIsoVertexShadow::ConsumerLock::ConsumerLock
 		( 
-			boost::shared_lock< boost::shared_mutex > && lock, 
-			BuilderQueue *& pBuilderQueue, 
-			LOD * pResolution, Vertices * pVertices,
-			IBufferManager * pBuffMan, 
-			RoleSecureFlag::IClearFlag * pClearResetHWBuffersFlag,
-			const Touch3DFlags enStitches 
+			boost::shared_lock< boost::shared_mutex > &&	lock, 
+			BuilderQueue *&									pBuilderQueue, 
+			LOD *											pResolution, 
+			Vertices *										pVertices, 
+			Indices *										pIndices, 
+			IBufferManager *								pBuffMan, 
+			RoleSecureFlag::IClearFlag *					pClearResetVertexBufferFlag, 
+			RoleSecureFlag::IClearFlag *					pClearResetIndexBufferFlag, 
+			const Touch3DFlags								enStitches
 		) 
 		:	_lock(static_cast< boost::shared_lock< boost::shared_mutex > && > (lock)), 
 			_pBuilderQueue(pBuilderQueue), 
-			_meshOp(pResolution, pVertices, pBuffMan),
+			_meshOp(pResolution, pVertices, pIndices, pBuffMan),
 			_enStitches(enStitches),
-			_pClearResetHWBuffersFlag(pClearResetHWBuffersFlag)
+			_pClearResetVertexBufferFlag(pClearResetVertexBufferFlag),
+			_pClearResetIndexBufferFlag(pClearResetIndexBufferFlag)
 		{}
 
 		HardwareIsoVertexShadow::ConsumerLock::ConsumerLock( ConsumerLock && move ) 
@@ -345,31 +382,42 @@ namespace Ogre
 			_meshOp(move._meshOp), 
 			_enStitches(move._enStitches), 
 			_lock(static_cast< boost::shared_lock< boost::shared_mutex > && > (move._lock)),
-			_pClearResetHWBuffersFlag(move._pClearResetHWBuffersFlag)
+			_pClearResetVertexBufferFlag(move._pClearResetVertexBufferFlag),
+			_pClearResetIndexBufferFlag(move._pClearResetIndexBufferFlag)
 		{}
 
-		MeshOperation::MeshOperation( LOD * pResolution, Vertices * pVertices, IBufferManager * pBuffMan ) 
-			: resolution(pResolution), vertices(pVertices), _pBuffMan(pBuffMan) {}
+		MeshOperation::MeshOperation( LOD * pResolution, Vertices * pVertices, Indices * pIndices, IBufferManager * pBuffMan ) 
+			: resolution(pResolution), vertices(pVertices), indices(pIndices), _pBuffMan(pBuffMan) {}
 
-		void MeshOperation::clear( const IBufferManager::BufferDepth depth )
-		{
-			_pBuffMan->clear(depth, resolution->lod);
-		}
-
-		BuilderQueue::BuilderQueue( LOD * pResolution, Vertices * pVertexStuff, IBufferManager * pBuffMan, const Touch3DFlags enStitches, RoleSecureFlag::Flag * pResetHWBuffers )
-			: meshOp(pResolution, pVertexStuff, pBuffMan), stitches(enStitches), pResetHWBuffers(pResetHWBuffers)
+		BuilderQueue::BuilderQueue( 
+			LOD * pResolution, 
+			Vertices * pVertexStuff, 
+			Indices * pIndexStuff, 
+			IBufferManager * pBuffMan, 
+			const Touch3DFlags enStitches, 
+			RoleSecureFlag::Flag * pResetVertexHWBuffer,
+			RoleSecureFlag::Flag * pResetIndexHWBuffer
+		)
+			: meshOp(pResolution, pVertexStuff, pIndexStuff, pBuffMan), stitches(enStitches), pResetVertexHWBuffer(pResetVertexHWBuffer), pResetIndexHWBuffer(pResetIndexHWBuffer)
 		{
 
 		}
 
 		BuilderQueue::~BuilderQueue()
 		{
-			delete pResetHWBuffers;
+			delete pResetVertexHWBuffer;
+			delete pResetIndexHWBuffer;
 		}
 
 
-		HardwareIsoVertexShadow::DirectAccess::DirectAccess( BuilderQueue *& pBuilderQueue, LOD * pResolution, Vertices * pVertices, IBufferManager * pBuffMan, const Touch3DFlags enStitches ) 
-			: StateAccess(reallocate(pBuilderQueue, pResolution, pVertices, pBuffMan, enStitches, new RoleSecureFlag::Flag))
+		HardwareIsoVertexShadow::DirectAccess::DirectAccess( 
+			BuilderQueue *& pBuilderQueue, 
+			LOD * pResolution, 
+			Vertices * pVertices, Indices * pIndices, 
+			IBufferManager * pBuffMan, 
+			const Touch3DFlags enStitches 
+		) 
+			: StateAccess(reallocate(pBuilderQueue, pResolution, pVertices, pIndices, pBuffMan, enStitches))
 		{
 
 		}
@@ -380,15 +428,34 @@ namespace Ogre
 
 		}
 
-		BuilderQueue *& HardwareIsoVertexShadow::DirectAccess::reallocate( BuilderQueue *& pBuilderQueue, LOD * pResolution, Vertices * pVertices, IBufferManager * pBuffMan, const Touch3DFlags enStitches, RoleSecureFlag::Flag * pResetHWBuffersFlag )
+		BuilderQueue *& HardwareIsoVertexShadow::DirectAccess::reallocate(
+			BuilderQueue *& pBuilderQueue, 
+			LOD * pResolution, 
+			Vertices * pVertices, Indices * pIndices, 
+			IBufferManager * pBuffMan, 
+			const Touch3DFlags enStitches
+		)
 		{
 			delete pBuilderQueue;
-			return pBuilderQueue = new BuilderQueue(pResolution, pVertices, pBuffMan, enStitches, pResetHWBuffersFlag);
+			return pBuilderQueue = new BuilderQueue(pResolution, pVertices, pIndices, pBuffMan, enStitches, new RoleSecureFlag::Flag(), new RoleSecureFlag::Flag());
 		}
 
 		HardwareIsoVertexShadow::DirectAccess::~DirectAccess()
 		{
 			this->updateHardwareState(revmapIVI2HWVIQueue.begin(), revmapIVI2HWVIQueue.end());
+		}
+
+
+		HardwareIsoVertexShadow::ResetVertexBufferFlag::ResetVertexBufferFlag( ResetIndexBufferFlag * pIdxBuffFlag ) 
+			: _fResetIndexBufferFlag(*pIdxBuffFlag->queryInterface< RoleSecureFlag::ISetFlag > ())
+		{
+
+		}
+
+		bool HardwareIsoVertexShadow::ResetVertexBufferFlag::operator++()
+		{
+			++_fResetIndexBufferFlag;
+			return RoleSecureFlag::Flag::operator++ ();
 		}
 
 	}

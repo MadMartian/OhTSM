@@ -73,7 +73,7 @@ namespace Ogre
 				delete it->second;
 			}
 		}
-
+		// TODO: Encountered access violation writing to address 0xABABABAB (no man's land) while unloading the channel index
 	}
 
 	void TerrainTile::initNeighbor(const VonNeumannNeighbor n, TerrainTile * t )

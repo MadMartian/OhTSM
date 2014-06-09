@@ -98,16 +98,24 @@ namespace Ogre
 		/** Populate the hardware buffers synchronously from a recently completed IsoSurfaceBuilder execution
 		@param pVtxElems The buffer containing vertex information supplied by the IsoSurfaceBuilder
 		@param direct Direct access to the shadow data
-		@param bResetHWBuffers Whether the hardware buffers should be reset prior to populating
-		@param enStitches The stitch flags associated with the vertex data identifying the surface configuration in tandem with LOD
+		@param bResetVertexBuffer Whether the hardware vertex buffer should be reset prior to populating (index buffer will reset as well)
+		@param bResetIndexBuffer Whether the hardware index buffer should be reset prior to populating
 		@param nNewVertexCount Number of new vertices to be appended to the vertex buffer
 		@param nIndexCount Total number of triangle vertex indices to be flushed */
-		void populateBuffers( IsoVertexElements * pVtxElems, HardwareShadow::HardwareIsoVertexShadow::DirectAccess & direct, const bool bResetHWBuffers, const size_t nNewVertexCount, const size_t nIndexCount );
+		void populateBuffers( 
+			IsoVertexElements *											pVtxElems, 
+			HardwareShadow::HardwareIsoVertexShadow::DirectAccess &		direct, 
+			const bool													bResetVertexBuffer, 
+			const bool													bResetIndexBuffer, 
+			const size_t												nNewVertexCount, 
+			const size_t												nIndexCount 
+		);
 		/// Deletes all hardware buffers and the shadow object
 		void deleteGeometry();
 
 	protected:
 		virtual bool prepareVertexBuffer( const size_t vertexCount, bool bClearIndicesToo );
+		virtual bool prepareIndexBuffer(const unsigned nLOD, const size_t nStitchFlags, const size_t indexCount);
 		virtual void computeMinimumLevels2Distances (const Real & fErrorFactorSqr, Real * pfMinLev2DistSqr, const size_t nCount);
 		virtual void setDeltaBinding (const int nLevel)
 		{
@@ -132,9 +140,11 @@ namespace Ogre
 		/// Keeps track of the most recent render operation used and the current state
 		int _lod0, _lod;
 		/// Keeps track of the most recent render operation used
-		MeshData::Index _idx0;
-		/// Keeps track of the most recent render operation used
-		SurfaceVertexData _vtxdata0;
+		const ShallowMesh * _pMesh0;
+		/// Index data used for each render operation
+		const SurfaceIndexData::Resolution::Range * _pRange0;
+		/// Last used index data buffer range
+		IndexData _idxdata;
 
 #ifdef _DISPDBG
 		bool _bBoxDisplay;

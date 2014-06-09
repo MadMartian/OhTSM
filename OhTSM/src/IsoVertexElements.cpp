@@ -61,4 +61,10 @@ namespace Ogre
 		vertexShipment.clear();
 		triangles.clear();
 	}
+
+	size_t IsoVertexElements::indexCount() const
+	{
+		return triangles.size();
+	}
+
 }

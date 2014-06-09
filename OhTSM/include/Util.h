@@ -1307,11 +1307,12 @@ namespace Ogre
 			bool _flag;
 
 		protected:
-			operator bool () const;
-			bool operator ! () const;
-			bool operator -- ();
-			bool operator ++ ();
+			virtual operator bool () const;
+			virtual bool operator ! () const;
+			virtual bool operator -- ();
+			virtual bool operator ++ ();
 
+			/// Methods that must be overridden by a sub-class to impart contingent knowledge to role-sensitive entities (wordy enough?)
 			template< typename INTERFACE > INTERFACE * queryInterface ()
 			{
 				static_assert(false, "Method implementation not found");

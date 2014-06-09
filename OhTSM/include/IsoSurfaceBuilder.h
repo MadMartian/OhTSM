@@ -808,8 +808,12 @@ namespace Ogre
 		/// Represents the LOD-specific state of the shadow and access to the vertices shared by all resolutions
 		HardwareShadow::MeshOperation * _pMeshOp;
 
-		/// Keeps track of the current position in the hardware vertex buffer
-		size_t _nHWBufPos;
+		size_t 
+			/// Keeps track of the current position in the hardware vertex buffer
+			_nVertexBufPos, 
+
+			/// Keeps track of the free space left in the index hardware buffer
+			_nIndexBufFree;
 
 		/// Tracks the properties of each transition iso-vertex occuring along a half-resolution boundary flush with a cube side
 		BorderIsoVertexPropertiesVector _vBorderIVP;
@@ -826,8 +830,11 @@ namespace Ogre
 		/// The LOD of the data represented in here
 		size_t _nLOD;
 
-		/// Whether the hardware state must be reset before applying new vertices
-		bool _bResetHWBuffers;
+		/// Whether the hardware vertex state must be reset before applying new vertices
+		bool _bResetVertexBuffer;
+
+		/// Whether the hardware index state must be reset before applying new vertices
+		bool _bResetIndexBuffer;
 
 		/// Reference-counted shared pointer to the data grid associated with this isosurface.
 		const Voxel::CubeDataRegionDescriptor & _cubemeta;
